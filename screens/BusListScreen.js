@@ -16,7 +16,7 @@ import { useSupabase } from '../contexts/SupabaseContext';
 export default function BusListScreen({ navigation, route }) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState(route.params?.filter || 'all');
-  
+
   // Get data from Supabase context
   const { 
     buses, 
