@@ -1,177 +1,205 @@
-# MetroBus Tracker 🚌
+# 🚌 MetroBus Tracker
 
-A real-time bus tracking mobile application built with React Native and Expo. Passengers can track buses, view routes, and get live updates on bus locations and arrival times.
+A comprehensive React Native bus tracking and navigation app with real-time location services, built with Expo and Supabase.
 
-## Features ✨
+## ✨ Features
 
-### 🗺️ Live Map Tracking
-- Real-time bus location tracking on interactive maps
-- User location detection and display
-- Bus markers with detailed information and PWD seat indicators
-- Play/pause tracking controls
-- Center on user location functionality
+### 🚍 Passenger Features
+- **Real-time Bus Tracking**: Live location of buses on interactive maps
+- **Route Information**: Detailed bus routes with stops and schedules
+- **Nearby Buses**: Find buses near your current location
+- **PWD Accessibility**: Information about wheelchair-accessible seats
+- **Feedback System**: Submit feedback and suggestions
+- **Search Functionality**: Search for specific routes and buses
 
-### 📋 Bus List
-- View all available buses with status indicators
-- Filter buses by status (Active, etc.)
-- **PWD seat availability tracking and filtering**
-- Real-time bus information (speed, passengers, ETA)
-- Pull-to-refresh functionality
-- Quick navigation to map view
+### 🚗 Driver Features
+- **Driver Dashboard**: Overview of daily trips and statistics
+- **Route Navigation**: Turn-by-turn navigation for drivers
+- **Schedule Management**: View and manage work schedules
+- **Trip Tracking**: Start/stop trips and track progress
+- **Real-time Updates**: Live location sharing with passengers
 
-### 🛣️ Route Planning
-- Search routes by origin and destination
-- Popular destinations quick selection
-- Detailed route information with stops
-- Route duration, frequency, and fare information
-- Interactive route tracking
+### 🗺️ Map Features
+- **Google Maps Integration**: Interactive maps with real-time data
+- **GPS Location**: Accurate user location detection
+- **Bus Markers**: Visual representation of bus locations
+- **Route Visualization**: Display bus routes on maps
+- **Location Services**: Real-time location tracking
 
-### 🎨 Modern UI/UX
-- Beautiful gradient design
-- Intuitive navigation
-- Responsive layout
-- Status indicators and badges
-- **Accessibility features with PWD seat indicators**
-- Smooth animations and transitions
+### 🔧 Technical Features
+- **Supabase Backend**: Real-time database with PostgreSQL
+- **Authentication**: User authentication and role management
+- **Real-time Updates**: Live data synchronization
+- **Offline Support**: Basic functionality without internet
+- **Cross-platform**: Works on iOS and Android
 
-## Screenshots 📱
+## 🛠️ Tech Stack
 
-The app includes four main screens:
-1. **Home Screen** - Main dashboard with quick access to features
-2. **Live Map** - Real-time bus tracking with interactive map
-3. **Bus List** - Comprehensive list of all available buses
-4. **Route Screen** - Route planning and search functionality
+- **Frontend**: React Native with Expo
+- **Backend**: Supabase (PostgreSQL + Real-time)
+- **Maps**: Google Maps API
+- **Navigation**: React Navigation
+- **State Management**: React Context API
+- **Authentication**: Supabase Auth
 
-## Installation & Setup 🚀
+## 📱 Screenshots
+
+### Passenger Mode
+- Home Screen with nearby buses
+- Bus list with real-time status
+- Interactive map with bus locations
+- Route search and information
+
+### Driver Mode
+- Driver dashboard with statistics
+- Route navigation with GPS
+- Schedule management
+- Trip tracking interface
+
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js (v14 or higher)
+- Node.js (v16 or higher)
 - npm or yarn
 - Expo CLI
-- iOS Simulator (for iOS) or Android Emulator (for Android)
+- Supabase account
+- Google Maps API key
 
-### 1. Clone the Repository
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/metrobus-tracker.git
+   cd metrobus-tracker
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up Supabase**
+   - Create a new Supabase project
+   - Run the SQL schema from `supabase-schema.sql`
+   - Update `lib/supabase.js` with your credentials
+
+4. **Configure Google Maps**
+   - Get a Google Maps API key
+   - Follow the setup guide in `GOOGLE_MAPS_SETUP.md`
+
+5. **Start the development server**
+   ```bash
+   npx expo start
+   ```
+
+## 📋 Setup Guides
+
+### Supabase Setup
+See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for detailed instructions on:
+- Creating a Supabase project
+- Setting up the database schema
+- Configuring authentication
+- Testing the connection
+
+### Google Maps Setup
+See [GOOGLE_MAPS_SETUP.md](./GOOGLE_MAPS_SETUP.md) for:
+- Getting API keys
+- Configuring maps
+- Setting up location services
+
+### Android Setup
+See [ANDROID_SETUP.md](./ANDROID_SETUP.md) for:
+- Building for Android
+- Configuring native modules
+- Publishing to Google Play
+
+## 🗄️ Database Schema
+
+The app uses the following Supabase tables:
+
+- **buses**: Bus information and current status
+- **routes**: Bus routes and paths
+- **stops**: Bus stops and locations
+- **schedules**: Driver schedules and timings
+- **drivers**: Driver information and credentials
+- **users**: User accounts and preferences
+- **feedback**: User feedback and suggestions
+- **bus_tracking**: Real-time bus location data
+
+## 🔧 Configuration
+
+### Environment Variables
+Create a `.env` file with:
+```
+EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+```
+
+### Supabase Configuration
+Update `lib/supabase.js` with your Supabase credentials:
+```javascript
+const supabaseUrl = 'your_supabase_url';
+const supabaseAnonKey = 'your_supabase_anon_key';
+```
+
+## 📱 Running the App
+
+### Development
 ```bash
-git clone <repository-url>
-cd MetroBusTracker
+npx expo start
 ```
 
-### 2. Install Dependencies
+### iOS Simulator
 ```bash
-npm install
+npx expo start --ios
 ```
 
-### 3. Start the Development Server
+### Android Emulator
 ```bash
-npm start
+npx expo start --android
 ```
 
-### 4. Run on Device/Simulator
-- Press `i` for iOS Simulator
-- Press `a` for Android Emulator
-- Scan QR code with Expo Go app on your phone
-
-## Dependencies 📦
-
-### Core Dependencies
-- `expo` - React Native development platform
-- `@rnmapbox/maps` - Map component for React Native using Mapbox
-- `expo-location` - Location services
-- `@react-navigation/native` - Navigation library
-- `expo-linear-gradient` - Gradient backgrounds
-- `@expo/vector-icons` - Icon library
-
-### Development Dependencies
-- `@babel/core` - JavaScript compiler
-
-## Project Structure 📁
-
-```
-MetroBusTracker/
-├── App.js                 # Main app component with navigation
-├── screens/               # Screen components
-│   ├── HomeScreen.js      # Main dashboard
-│   ├── MapScreen.js       # Live map with bus tracking
-│   ├── BusListScreen.js   # Bus list and filtering
-│   └── RouteScreen.js     # Route planning and search
-├── assets/                # App assets (icons, images)
-├── package.json           # Dependencies and scripts
-└── README.md             # Project documentation
+### Web Browser
+```bash
+npx expo start --web
 ```
 
-## Usage Guide 📖
+## 🧪 Testing
 
-### Getting Started
-1. Open the app and grant location permissions
-2. Navigate through the home screen to access different features
-3. Use the map to track buses in real-time
-4. Search for routes or browse available buses
+### Database Connection
+1. Open the app
+2. Go to Profile tab
+3. Check "Database Status"
+4. Test connection if needed
 
-### Tracking Buses
-1. Go to the "Live Map" screen
-2. Enable tracking with the play button
-3. Tap on bus markers to see detailed information
-4. Use the locate button to center on your position
+### Location Services
+1. Open Map screen
+2. Allow location permissions
+3. Verify blue dot appears
+4. Test "My Location" button
 
-### Finding Routes
-1. Navigate to "My Route" screen
-2. Enter your origin and destination
-3. Browse available routes or use popular destinations
-4. Tap on a route to see stops and details
-5. Use "Track This Route" to view on map
+### Real-time Features
+1. Submit feedback from Home screen
+2. Check Settings → View Submitted Data
+3. Verify data appears in Supabase dashboard
 
-### Viewing Bus List
-1. Go to "Available Buses" screen
-2. Use filters to show specific bus statuses (including PWD seats filter)
-3. Pull down to refresh bus data
-4. Tap on a bus to view it on the map
-5. Check PWD seat availability for each bus
+## 🚀 Deployment
 
-## Configuration ⚙️
+### Expo Build
+```bash
+npx expo build:android
+npx expo build:ios
+```
 
-### Location Permissions
-The app requires location permissions to:
-- Show user location on the map
-- Calculate distances to bus stops
-- Provide accurate tracking information
+### EAS Build (Recommended)
+```bash
+npm install -g @expo/eas-cli
+eas build --platform android
+eas build --platform ios
+```
 
-### Map Configuration
-- Currently uses Mapbox (requires access token for production)
-- **Set your Mapbox access token in `app.json` under `expo.extra.MAPBOX_ACCESS_TOKEN`**
-- Mock data is used for demonstration purposes
-- Real implementation would connect to bus tracking APIs
-- See `MAPBOX_SETUP.md` for detailed setup instructions
-- **Do NOT commit your real Mapbox token to public repositories**
-
-## Mock Data 🎭
-
-The app currently uses mock data for demonstration:
-- 5 sample bus routes
-- Real-time location simulation
-- Bus status and passenger information
-- Route schedules and stops
-
-## Future Enhancements 🚀
-
-### Planned Features
-- [x] **PWD seat availability tracking**
-- [ ] Real-time API integration
-- [ ] Push notifications for bus arrivals
-- [ ] Offline mode support
-- [ ] Multi-language support
-- [ ] Dark mode theme
-- [ ] Bus capacity alerts
-- [ ] Route optimization
-- [ ] Payment integration
-
-### Technical Improvements
-- [ ] Backend API development
-- [ ] Database integration
-- [ ] Real-time WebSocket connections
-- [ ] Performance optimization
-- [ ] Unit and integration tests
-
-## Contributing 🤝
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -179,28 +207,43 @@ The app currently uses mock data for demonstration:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## License 📄
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Support 💬
+## 🙏 Acknowledgments
 
-If you have any questions or need help:
-- Create an issue in the repository
-- Contact the development team
-- Check the documentation
+- [Expo](https://expo.dev/) for the development platform
+- [Supabase](https://supabase.com/) for the backend services
+- [React Navigation](https://reactnavigation.org/) for navigation
+- [Google Maps](https://developers.google.com/maps) for mapping services
 
-## Acknowledgments 🙏
+## 📞 Support
 
-- Expo team for the amazing development platform
-- React Native community for excellent libraries
-- Google Maps for mapping services
-- All contributors and testers
+If you encounter any issues or have questions:
+
+1. Check the setup guides in the `/docs` folder
+2. Review the console logs for error messages
+3. Test database connection in Settings
+4. Create an issue on GitHub
+
+## 🔄 Updates
+
+### Recent Updates
+- ✅ Real-time bus tracking with Supabase
+- ✅ Google Maps integration with GPS
+- ✅ Driver and passenger modes
+- ✅ Database connection testing
+- ✅ Location services optimization
+- ✅ Bottom navigation implementation
+
+### Planned Features
+- 🔄 Push notifications
+- 🔄 Offline mode
+- 🔄 Multi-language support
+- 🔄 Advanced analytics
+- 🔄 Payment integration
 
 ---
 
-**Made with ❤️ for better public transportation experience** 
-
-## Migration Note
-
-This project previously used Google Maps via `react-native-maps`. It now uses Mapbox via `@rnmapbox/maps` for all mapping features. 
+**Built with ❤️ using React Native and Supabase** 
