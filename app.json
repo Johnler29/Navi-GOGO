@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "MetroBus Tracker",
+    "slug": "metrobustracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#2E86AB"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.metrobustracker",
+      "config": {
+        "googleMapsApiKey": "AIzaSyAv3CxZGhXEat9i1TcE0Ok6Eu-VU1Nl8wg"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2E86AB"
+      },
+      "package": "com.yourcompany.metrobustracker",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAv3CxZGhXEat9i1TcE0Ok6Eu-VU1Nl8wg"
+        }
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow MetroBus Tracker to use your location to show nearby buses and stops."
+        }
+      ]
+    ],
+    "extra": {
+      "GOOGLE_MAPS_API_KEY": "AIzaSyAv3CxZGhXEat9i1TcE0Ok6Eu-VU1Nl8wg"
+    }
+  }
+}
