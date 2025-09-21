@@ -60,7 +60,7 @@ export default function HelpScreen({ navigation }) {
             onPress={item.action}
           >
             <View style={styles.helpContent}>
-              <Ionicons name={item.icon} size={24} color="#2B973A" />
+              <Ionicons name={item.icon} size={24} color="#f59e0b" />
               <Text style={styles.helpText}>{item.title}</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   headerContainer: {
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,

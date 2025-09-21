@@ -1,16 +1,15 @@
 {
   "expo": {
-    "name": "MetroBus Tracker",
+    "name": "Metro Link Tracker",
     "slug": "metrobustracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#2E86AB"
+      "backgroundColor": "#fbbf24"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -19,23 +18,27 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.yourcompany.metrobustracker",
       "config": {
-        "googleMapsApiKey": "AIzaSyAv3CxZGhXEat9i1TcE0Ok6Eu-VU1Nl8wg"
+        "googleMapsApiKey": "AIzaSyAtz31ET-f9agUbnJuR-tR35Gk8GdsTRic"
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#2E86AB"
+        "backgroundColor": "#fbbf24"
       },
       "package": "com.yourcompany.metrobustracker",
+      "versionCode": 1,
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "INTERNET"
+        "INTERNET",
+        "ACCESS_BACKGROUND_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyAv3CxZGhXEat9i1TcE0Ok6Eu-VU1Nl8wg"
+          "apiKey": "AIzaSyAtz31ET-f9agUbnJuR-tR35Gk8GdsTRic"
         }
       }
     },
@@ -46,12 +49,16 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow MetroBus Tracker to use your location to show nearby buses and stops."
+          "locationAlwaysAndWhenInUsePermission": "Allow Metro Link Tracker to use your location to show nearby buses and stops."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
-      "GOOGLE_MAPS_API_KEY": "AIzaSyAv3CxZGhXEat9i1TcE0Ok6Eu-VU1Nl8wg"
+      "GOOGLE_MAPS_API_KEY": "AIzaSyAtz31ET-f9agUbnJuR-tR35Gk8GdsTRic",
+      "eas": {
+        "projectId": "98656936-607c-4250-9f54-f55cd56958e8"
+      }
     }
   }
 }

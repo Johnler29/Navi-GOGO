@@ -12,10 +12,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSupabase } from '../contexts/SupabaseContext';
+import { getLocationStatus, getCapacityStatus, formatTime } from '../utils/locationUtils';
 
 export default function BusListScreen({ navigation, route }) {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState(route.params?.filter || 'all');
+  const [busCapacityStatus, setBusCapacityStatus] = useState({});
+  const [realtimeBuses, setRealtimeBuses] = useState([]);
+  const [useRealtime, setUseRealtime] = useState(true);
 
   // Get data from Supabase context
   const { 
@@ -23,14 +27,109 @@ export default function BusListScreen({ navigation, route }) {
     routes, 
     loading, 
     error, 
-    refreshData 
+    refreshData,
+    getBusCapacityStatus,
+    supabase
   } = useSupabase();
 
-  const onRefresh = () => {
+  // Load real-time bus data
+  const loadRealtimeBuses = async () => {
+    try {
+      if (!supabase) {
+        console.warn('Supabase client not available');
+        return;
+      }
+
+      // Try to get real-time bus status, fallback to basic bus data
+      const { data, error } = await supabase
+        .rpc('get_realtime_bus_status');
+      
+      if (error) {
+        console.warn('⚠️ Real-time function not available, using basic bus data:', error);
+        // Fallback to basic bus data
+        const { data: busData, error: busError } = await supabase
+          .from('buses')
+          .select('*')
+          .eq('is_active', true);
+        
+        if (busError) throw busError;
+        setRealtimeBuses(busData || []);
+      } else {
+        setRealtimeBuses(data || []);
+      }
+    } catch (err) {
+      console.error('Error loading real-time buses:', err);
+      setRealtimeBuses([]);
+    }
+  };
+
+  // Load capacity status when buses data changes
+  useEffect(() => {
+    if (buses.length > 0) {
+      loadCapacityStatus();
+    }
+  }, [buses]);
+
+  // Load real-time data on mount and when refreshing
+  useEffect(() => {
+    if (useRealtime) {
+      loadRealtimeBuses();
+    }
+  }, [useRealtime, refreshing]);
+
+  const loadCapacityStatus = async () => {
+    try {
+      if (!buses || buses.length === 0) {
+        console.warn('No buses available for capacity status');
+        return;
+      }
+
+      const capacityPromises = buses.map(async (bus) => {
+        try {
+          const capacityData = await getBusCapacityStatus(bus.id);
+          return { busId: bus.id, capacityData };
+        } catch (err) {
+          console.warn(`⚠️ Error getting capacity for bus ${bus.id}:`, err);
+          return { 
+            busId: bus.id, 
+            capacityData: { 
+              id: bus.id, 
+              current_passengers: 0, 
+              capacity_percentage: 0, 
+              max_capacity: 50 
+            } 
+          };
+        }
+      });
+      
+      const capacityResults = await Promise.all(capacityPromises);
+      const capacityMap = {};
+      
+      capacityResults.forEach(({ busId, capacityData }) => {
+        capacityMap[busId] = capacityData;
+      });
+      
+      setBusCapacityStatus(capacityMap);
+    } catch (error) {
+      console.error('Error loading capacity status:', error);
+      // Set empty capacity map on error
+      setBusCapacityStatus({});
+    }
+  };
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    refreshData().finally(() => {
+    try {
+      await refreshData();
+      await loadCapacityStatus();
+      if (useRealtime) {
+        await loadRealtimeBuses();
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
       setRefreshing(false);
-    });
+    }
   };
 
   const handleMenuPress = () => {
@@ -38,13 +137,15 @@ export default function BusListScreen({ navigation, route }) {
   };
 
   const handleBusPress = (bus) => {
+    console.log('🚌 BusListScreen - Selected bus:', bus);
+    console.log('🚌 BusListScreen - Passing ID:', bus.id);
     navigation.navigate('Map', { selectedBusId: bus.id });
   };
 
   const getStatusColor = (status) => {
     switch (status) {
       case 'active':
-        return '#4CAF50';
+        return '#22c55e';
       case 'inactive':
         return '#FF6B6B';
       default:
@@ -65,37 +166,92 @@ export default function BusListScreen({ navigation, route }) {
 
   const getPwdSeatStatus = (pwdSeatsAvailable, pwdSeats) => {
     if (pwdSeatsAvailable > 0) {
-      return { text: `${pwdSeatsAvailable} Available`, color: '#4CAF50' };
+      return { text: `${pwdSeatsAvailable} Available`, color: '#22c55e' };
     } else {
       return { text: 'Full', color: '#FF6B6B' };
     }
   };
 
+  const getCapacityColor = (percentage) => {
+    if (percentage <= 25) return '#22c55e'; // Green
+    if (percentage <= 50) return '#FFC107'; // Yellow
+    if (percentage <= 75) return '#FF9800'; // Orange
+    return '#F44336'; // Red
+  };
+
+  const getCapacityStatus = (percentage) => {
+    if (percentage <= 25) return 'Low';
+    if (percentage <= 50) return 'Moderate';
+    if (percentage <= 75) return 'High';
+    return 'Full';
+  };
+
   // Transform database buses to match the expected format
   const transformBusData = (bus) => {
     const route = routes.find(r => r.id === bus.route_id);
-    return {
-      id: bus.id,
-      route: route ? `Route ${route.route_number}` : `Route ${bus.route_id}`,
+    const capacityData = busCapacityStatus[bus.id];
+    
+    // Use real-time data if available, otherwise fall back to regular data
+    const isRealtime = useRealtime && realtimeBuses.length > 0;
+    const busData = isRealtime ? realtimeBuses.find(rb => rb.bus_id === bus.id) || bus : bus;
+    
+    const locationStatus = getLocationStatus(busData.last_location_update || bus.updated_at);
+    const capacityStatus = getCapacityStatus(busData.capacity_percentage || bus.capacity_percentage || 0);
+    
+    const transformedBus = {
+      id: bus.id, // Use id from the buses table
+      route: busData.bus_name || bus.name || `Bus ${bus.bus_number}` || `Route ${route?.route_number}` || 'Unknown Bus',
       destination: route ? route.destination : 'Unknown',
       origin: route ? route.origin : 'Unknown',
-      status: bus.status || 'active',
-      speed: bus.speed || 25,
-      passengers: bus.current_passengers || 0,
-      capacity: bus.capacity || 45,
+      status: busData.tracking_status || bus.tracking_status || bus.status || 'active',
+      avgFare: busData.avg_fare || bus.avg_fare || 15,
+      passengers: busData.current_passengers || capacityData?.current_passengers || bus.current_passengers || 0,
+      capacity: busData.max_capacity || capacityData?.max_capacity || bus.capacity || 45,
+      capacityPercentage: busData.capacity_percentage || capacityData?.capacity_percentage || bus.capacity_percentage || 0,
+      capacityStatus: busData.capacity_status || capacityData?.capacity_status || capacityStatus.status,
       pwdSeats: bus.pwd_seats || 4,
       pwdSeatsAvailable: bus.pwd_seats_available || 2,
       eta: bus.estimated_arrival || '5 min',
       distance: bus.distance || '2.3 km',
-      latitude: bus.current_location?.latitude || 37.78825,
-      longitude: bus.current_location?.longitude || -122.4324,
+      latitude: busData.latitude || bus.latitude || 37.78825,
+      longitude: busData.longitude || bus.longitude || -122.4324,
+      lastUpdate: busData.last_location_update || bus.updated_at || new Date().toISOString(),
+      locationStatus: locationStatus.status,
+      locationStatusColor: locationStatus.color,
+      isMoving: busData.is_moving || false,
+      accuracy: busData.accuracy || null,
     };
+    
+    console.log('🚌 BusListScreen - Transforming bus:', {
+      originalId: bus.id,
+      routeNumber: route?.route_number,
+      transformedId: transformedBus.id,
+      route: transformedBus.route,
+      isRealtime: isRealtime,
+      locationStatus: transformedBus.locationStatus
+    });
+    
+    return transformedBus;
   };
 
-  const filteredBuses = buses.map(transformBusData);
+  const filteredBuses = buses.map(transformBusData).filter(bus => {
+    if (selectedFilter === 'all') return true;
+    if (selectedFilter === 'active') return bus.status === 'active';
+    if (selectedFilter === 'pwd') return bus.pwdSeatsAvailable > 0;
+    if (selectedFilter === 'nearby') return parseFloat(bus.distance) <= 5; // Within 5km
+    if (selectedFilter === 'low-capacity') {
+      const capacityData = busCapacityStatus[bus.id] || { capacity_percentage: 0 };
+      return capacityData.capacity_percentage <= 50;
+    }
+    return true;
+  });
 
   const renderBusItem = ({ item }) => {
     const pwdStatus = getPwdSeatStatus(item.pwdSeatsAvailable, item.pwdSeats);
+    const capacityData = busCapacityStatus[item.id] || { capacity_percentage: 0, max_capacity: item.capacity };
+    const capacityPercentage = capacityData.capacity_percentage || 0;
+    const capacityColor = getCapacityColor(capacityPercentage);
+    const capacityStatus = getCapacityStatus(capacityPercentage);
     
     return (
       <TouchableOpacity
@@ -110,6 +266,9 @@ export default function BusListScreen({ navigation, route }) {
           <View style={styles.statusContainer}>
             <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
             <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+            <View style={[styles.capacityIndicator, { backgroundColor: capacityColor }]}>
+              <Text style={styles.capacityIndicatorText}>{capacityPercentage}%</Text>
+            </View>
           </View>
         </View>
 
@@ -127,12 +286,31 @@ export default function BusListScreen({ navigation, route }) {
 
           <View style={styles.detailRow}>
             <View style={styles.detailItem}>
-            <Ionicons name="people" size={16} color="#666" />
-              <Text style={styles.detailText}>{item.passengers}/{item.capacity}</Text>
+              <Ionicons name="card" size={16} color="#666" />
+              <Text style={styles.detailText}>₱{item.avgFare} avg fare</Text>
+            </View>
           </View>
-            <View style={styles.detailItem}>
-              <Ionicons name="speedometer" size={16} color="#666" />
-              <Text style={styles.detailText}>{item.speed} km/h</Text>
+
+        {/* Capacity Status Section */}
+        <View style={styles.capacitySection}>
+          <View style={styles.capacityHeader}>
+            <Ionicons name="pulse" size={16} color={capacityColor} />
+            <Text style={[styles.capacityLabel, { color: capacityColor }]}>
+              Capacity: {capacityPercentage}% ({capacityStatus})
+            </Text>
+          </View>
+          <View style={styles.capacityBar}>
+            <View style={styles.capacityBarBackground}>
+              <View 
+                style={[
+                  styles.capacityBarFill, 
+                  { 
+                    width: `${capacityPercentage}%`,
+                    backgroundColor: capacityColor
+                  }
+                ]} 
+              />
+            </View>
           </View>
         </View>
 
@@ -181,7 +359,7 @@ export default function BusListScreen({ navigation, route }) {
           </View>
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2B973A" />
+          <ActivityIndicator size="large" color="#f59e0b" />
           <Text style={styles.loadingText}>Loading bus data...</Text>
         </View>
       </View>
@@ -206,7 +384,13 @@ export default function BusListScreen({ navigation, route }) {
           <Ionicons name="warning" size={48} color="#F44336" />
           <Text style={styles.errorText}>Failed to load bus data</Text>
           <Text style={styles.errorSubtext}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={refreshData}>
+          <TouchableOpacity style={styles.retryButton} onPress={async () => {
+            try {
+              await refreshData();
+            } catch (error) {
+              console.error('Error refreshing data:', error);
+            }
+          }}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -222,10 +406,24 @@ export default function BusListScreen({ navigation, route }) {
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Available Buses</Text>
-          <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-            <Ionicons name="menu" size={24} color="#fff" />
-          </TouchableOpacity>
+          <Text style={styles.headerTitle}>
+            {useRealtime ? 'Real-Time Buses' : 'Available Buses'}
+          </Text>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={[styles.realtimeButton, useRealtime && styles.realtimeButtonActive]} 
+              onPress={() => setUseRealtime(!useRealtime)}
+            >
+              <Ionicons 
+                name={useRealtime ? "radio" : "radio-outline"} 
+                size={20} 
+                color={useRealtime ? "#fff" : "#f59e0b"} 
+              />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
+              <Ionicons name="menu" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -233,9 +431,10 @@ export default function BusListScreen({ navigation, route }) {
       <View style={styles.filtersContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {renderFilterButton('all', 'All Buses')}
-        {renderFilterButton('active', 'Active')}
+          {renderFilterButton('active', 'Active')}
           {renderFilterButton('pwd', 'PWD Accessible')}
           {renderFilterButton('nearby', 'Nearby')}
+          {renderFilterButton('low-capacity', 'Low Capacity')}
         </ScrollView>
       </View>
 
@@ -250,8 +449,8 @@ export default function BusListScreen({ navigation, route }) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={['#2B973A']}
-            tintColor="#2B973A"
+            colors={['#f59e0b']}
+            tintColor="#f59e0b"
           />
         }
         showsVerticalScrollIndicator={false}
@@ -266,55 +465,110 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   headerContainer: {
-    backgroundColor: '#2B973A',
-    paddingTop: 50,
-    paddingBottom: 20,
+    backgroundColor: '#f59e0b',
+    paddingTop: 60,
+    paddingBottom: 24,
     paddingHorizontal: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: 48,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  realtimeButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  realtimeButtonActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   backButton: {
-    padding: 8,
+    padding: 12,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '800',
     fontFamily: 'System',
+    letterSpacing: -0.3,
   },
   menuButton: {
-    padding: 8,
+    padding: 12,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   filtersContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 20,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   filterButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#f5f5f5',
-    marginRight: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    backgroundColor: '#fffbeb',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   filterButtonActive: {
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
+    borderColor: '#f59e0b',
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   filterButtonText: {
     color: '#666',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     fontFamily: 'System',
+    letterSpacing: -0.2,
   },
   filterButtonTextActive: {
     color: '#fff',
@@ -327,54 +581,81 @@ const styles = StyleSheet.create({
   },
   busCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 15,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#f8f9fa',
   },
   busHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   busInfo: {
     flex: 1,
   },
   busRoute: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 2,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 4,
     fontFamily: 'System',
+    letterSpacing: -0.3,
   },
   busDirection: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#666',
     fontFamily: 'System',
+    fontWeight: '500',
+    letterSpacing: -0.1,
   },
   statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
   },
   statusText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     color: '#666',
     fontFamily: 'System',
+    letterSpacing: -0.1,
+  },
+  capacityIndicator: {
+    marginLeft: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#f59e0b',
+  },
+  capacityIndicatorText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#fff',
+    fontFamily: 'System',
+    letterSpacing: 0.2,
   },
   busDetails: {
-    gap: 8,
+    gap: 12,
+    marginBottom: 16,
   },
   detailRow: {
     flexDirection: 'row',
@@ -384,28 +665,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
   detailText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 6,
+    fontSize: 15,
+    color: '#1a1a1a',
+    marginLeft: 8,
     fontFamily: 'System',
+    fontWeight: '600',
+    letterSpacing: -0.1,
   },
   pwdSection: {
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
   },
   pwdInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
   pwdText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 8,
     fontFamily: 'System',
+    letterSpacing: -0.1,
+  },
+  capacitySection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  capacityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  capacityLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 8,
+    fontFamily: 'System',
+    letterSpacing: -0.1,
+  },
+  capacityBar: {
+    marginTop: 8,
+  },
+  capacityBarBackground: {
+    height: 8,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  capacityBarFill: {
+    height: '100%',
+    borderRadius: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -445,7 +778,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingVertical: 10,
     paddingHorizontal: 20,
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
     borderRadius: 8,
   },
   retryButtonText: {

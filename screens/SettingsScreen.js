@@ -195,28 +195,28 @@ export default function SettingsScreen({ navigation }) {
                 style={styles.dataButton} 
                 onPress={() => viewData('buses')}
               >
-                <Ionicons name="bus" size={20} color="#2B973A" />
+                <Ionicons name="bus" size={20} color="#f59e0b" />
                 <Text style={styles.dataButtonText}>Buses ({getDataCount('buses')})</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.dataButton} 
                 onPress={() => viewData('routes')}
               >
-                <Ionicons name="map" size={20} color="#2B973A" />
+                <Ionicons name="map" size={20} color="#f59e0b" />
                 <Text style={styles.dataButtonText}>Routes ({getDataCount('routes')})</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.dataButton} 
                 onPress={() => viewData('drivers')}
               >
-                <Ionicons name="person" size={20} color="#2B973A" />
+                <Ionicons name="person" size={20} color="#f59e0b" />
                 <Text style={styles.dataButtonText}>Drivers ({getDataCount('drivers')})</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.dataButton} 
                 onPress={() => viewData('feedback')}
               >
-                <Ionicons name="chatbubble" size={20} color="#2B973A" />
+                <Ionicons name="chatbubble" size={20} color="#f59e0b" />
                 <Text style={styles.dataButtonText}>Feedback ({getDataCount('feedback')})</Text>
               </TouchableOpacity>
             </View>
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   headerContainer: {
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   testButton: {
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#2B973A',
+    color: '#f59e0b',
     marginBottom: 4,
     fontFamily: 'System',
   },
@@ -457,12 +457,12 @@ const styles = StyleSheet.create({
   dataButtonText: {
     marginLeft: 8,
     fontSize: 14,
-    color: '#2B973A',
+    color: '#f59e0b',
     fontWeight: '600',
     fontFamily: 'System',
   },
   supabaseButton: {
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
   dataItemTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#2B973A',
+    color: '#f59e0b',
     marginBottom: 4,
     fontFamily: 'System',
   },

@@ -1,34 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createDrawerNavigator } from '@react-navigation/drawer';
+import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity, Modal } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 // Import screens
 import HomeScreen from './screens/HomeScreen';
 import MapScreen from './screens/MapScreen';
 import BusListScreen from './screens/BusListScreen';
 import RouteScreen from './screens/RouteScreen';
+import LoginScreen from './screens/LoginScreen';
 
 // Import driver screens
+import DriverLoginScreen from './screens/DriverLoginScreen';
 import DriverHomeScreen from './screens/DriverHomeScreen';
 import DriverMapScreen from './screens/DriverMapScreen';
 import DriverScheduleScreen from './screens/DriverScheduleScreen';
+import DriverProfileScreen from './screens/DriverProfileScreen';
+import DriverEmergencyScreen from './screens/DriverEmergencyScreen';
+import DriverNotificationsScreen from './screens/DriverNotificationsScreen';
+import DriverAnalyticsScreen from './screens/DriverAnalyticsScreen';
+import DriverMaintenanceScreen from './screens/DriverMaintenanceScreen';
 
 // Import additional screens
 import SettingsScreen from './screens/SettingsScreen';
 import HelpScreen from './screens/HelpScreen';
 
-// Import custom drawer
-import CustomDrawer from './components/CustomDrawer';
+// Import simple drawer
+import SimpleDrawer from './components/SimpleDrawer';
 
-// Import Supabase context
+// Import contexts
 import { SupabaseProvider } from './contexts/SupabaseContext';
+import { DrawerProvider, useDrawer } from './contexts/DrawerContext';
 
-const Drawer = createDrawerNavigator();
+const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // Passenger Tab Navigator
@@ -51,15 +61,20 @@ function PassengerTabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#2B973A',
+        tabBarActiveTintColor: '#f59e0b',
         tabBarInactiveTintColor: '#666',
         tabBarStyle: {
           backgroundColor: 'white',
           borderTopWidth: 1,
-          borderTopColor: '#e9ecef',
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
+          borderTopColor: '#f0f0f0',
+          paddingBottom: 8,
+          paddingTop: 8,
+          height: 70,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          elevation: 8,
         },
         headerShown: false,
       })}
@@ -116,15 +131,20 @@ function DriverTabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#2B973A',
+        tabBarActiveTintColor: '#f59e0b',
         tabBarInactiveTintColor: '#666',
         tabBarStyle: {
           backgroundColor: 'white',
           borderTopWidth: 1,
-          borderTopColor: '#e9ecef',
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
+          borderTopColor: '#f0f0f0',
+          paddingBottom: 8,
+          paddingTop: 8,
+          height: 70,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          elevation: 8,
         },
         headerShown: false,
       })}
@@ -152,7 +172,7 @@ function DriverTabNavigator() {
       />
       <Tab.Screen 
         name="DriverProfile" 
-        component={SettingsScreen}
+        component={DriverProfileScreen}
         options={{
           tabBarLabel: 'Profile',
         }}
@@ -161,83 +181,142 @@ function DriverTabNavigator() {
   );
 }
 
-export default function App() {
+// Driver Authentication Wrapper
+function DriverAuthWrapper({ navigation }) {
+  const [isDriverAuthenticated, setIsDriverAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    checkDriverAuthentication();
+  }, []);
+
+  const checkDriverAuthentication = async () => {
+    try {
+      const driverSession = await AsyncStorage.getItem('driverSession');
+      if (driverSession) {
+        const session = JSON.parse(driverSession);
+        if (session.driver_id) {
+          setIsDriverAuthenticated(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking driver authentication:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoginSuccess = () => {
+    setIsDriverAuthenticated(true);
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+      </View>
+    );
+  }
+
+  if (!isDriverAuthenticated) {
+    return <DriverLoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  return <DriverTabNavigator />;
+}
+
+// Main App Component with Authentication
+function AppContent() {
+  const { user, loading } = useAuth();
+  const { drawerVisible, closeDrawer } = useDrawer();
   const [currentRole, setCurrentRole] = useState('passenger');
+  const [driverAuthenticated, setDriverAuthenticated] = useState(false);
 
   const handleRoleChange = (newRole) => {
     setCurrentRole(newRole);
+    if (newRole === 'driver') {
+      // Reset driver authentication when switching to driver mode
+      setDriverAuthenticated(false);
+    } else if (newRole === 'passenger') {
+      // Reset driver authentication when switching to passenger mode
+      setDriverAuthenticated(false);
+    }
   };
+
+  const handleDriverLogin = () => {
+    setDriverAuthenticated(true);
+  };
+
+  const handleBackToPassenger = () => {
+    setCurrentRole('passenger');
+    setDriverAuthenticated(false);
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  // If switching to driver mode but not authenticated as driver, show driver login
+  if (currentRole === 'driver' && !driverAuthenticated) {
+    return (
+      <SupabaseProvider>
+        <DriverLoginScreen 
+          onLoginSuccess={handleDriverLogin}
+          onBackToPassenger={handleBackToPassenger}
+        />
+      </SupabaseProvider>
+    );
+  }
 
   return (
     <SupabaseProvider>
       <NavigationContainer>
-        <StatusBar style="light" />
-        <Drawer.Navigator
-          initialRouteName="PassengerTabs"
-          drawerContent={(props) => (
-            <CustomDrawer 
-              {...props} 
-              currentRole={currentRole}
-              onRoleChange={handleRoleChange}
-            />
+        <StatusBar style="light" backgroundColor="#f59e0b" />
+        <View style={styles.container}>
+          {/* Simple Drawer Modal */}
+          <SimpleDrawer
+            visible={drawerVisible}
+            onClose={closeDrawer}
+            currentRole={currentRole}
+            onRoleChange={handleRoleChange}
+            navigation={{ navigate: (screen) => {
+              // Handle navigation based on screen name
+              if (screen === 'PassengerTabs') {
+                setCurrentRole('passenger');
+              } else if (screen === 'DriverTabs') {
+                setCurrentRole('driver');
+              }
+            }}}
+          />
+          
+          {/* Main Navigation */}
+          {currentRole === 'passenger' ? (
+            <PassengerTabNavigator />
+          ) : (
+            <DriverTabNavigator />
           )}
-          screenOptions={{
-            headerShown: false,
-            drawerStyle: {
-              backgroundColor: '#fff',
-              width: 280,
-            },
-            drawerActiveTintColor: '#2B973A',
-            drawerInactiveTintColor: '#666',
-          }}
-        >
-          {/* Passenger Tab Navigator */}
-          <Drawer.Screen 
-            name="PassengerTabs" 
-            component={PassengerTabNavigator}
-            options={{
-              drawerLabel: 'Passenger Mode',
-              drawerIcon: ({ color, size }) => (
-                <Ionicons name="people" size={size} color={color} />
-              ),
-            }}
-          />
-
-          {/* Driver Tab Navigator */}
-          <Drawer.Screen 
-            name="DriverTabs" 
-            component={DriverTabNavigator}
-            options={{
-              drawerLabel: 'Driver Mode',
-              drawerIcon: ({ color, size }) => (
-                <Ionicons name="car" size={size} color={color} />
-              ),
-            }}
-          />
-
-          {/* Additional Screens */}
-          <Drawer.Screen 
-            name="RouteSearch" 
-            component={RouteScreen}
-            options={{
-              drawerLabel: 'Route Search',
-              drawerIcon: ({ color, size }) => (
-                <Ionicons name="search" size={size} color={color} />
-              ),
-            }}
-          />
-          <Drawer.Screen 
-            name="Help" 
-            component={HelpScreen}
-            options={{
-              drawerLabel: 'Help & Support',
-              drawerIcon: ({ color, size }) => (
-                <Ionicons name="help-circle" size={size} color={color} />
-              ),
-            }}
-          />
-        </Drawer.Navigator>
+        </View>
       </NavigationContainer>
+    </SupabaseProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <SupabaseProvider>
+      <AuthProvider>
+        <DrawerProvider>
+          <AppContent />
+        </DrawerProvider>
+      </AuthProvider>
     </SupabaseProvider>
   );
 }
@@ -245,6 +324,17 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
   },
 });

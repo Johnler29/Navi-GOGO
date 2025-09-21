@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabaseHelpers, testDatabaseConnection } from '../lib/supabase';
+import { supabase, supabaseHelpers, testDatabaseConnection } from '../lib/supabase';
 
 const SupabaseContext = createContext();
 
@@ -18,15 +18,53 @@ export const SupabaseProvider = ({ children }) => {
   const [schedules, setSchedules] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [feedback, setFeedback] = useState([]);
+  const [driverBusAssignments, setDriverBusAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('testing');
 
   // Load initial data
   useEffect(() => {
-    testConnectionAndLoadData();
-    setupRealtimeSubscriptions();
+    // Only load data in production or when explicitly needed
+    if (__DEV__) {
+      // In development, load minimal data
+      loadMinimalData();
+    } else {
+      testConnectionAndLoadData();
+      setupRealtimeSubscriptions();
+    }
   }, []);
+
+  // Minimal data loading for development
+  const loadMinimalData = async () => {
+    try {
+      setLoading(true);
+      // Load essential data including drivers for development
+      const { data: busesData } = await supabase.from('buses').select('*').limit(5);
+      const { data: routesData } = await supabase.from('routes').select('*').limit(5);
+      const { data: driversData } = await supabase.from('drivers').select('*').limit(10);
+      const { data: assignmentsData } = await supabase.from('driver_bus_assignments').select('*');
+      
+      setBuses(busesData || []);
+      setRoutes(routesData || []);
+      setDrivers(driversData || []);
+      setDriverBusAssignments(assignmentsData || []);
+      setConnectionStatus('connected');
+      
+      console.log('📊 Loaded minimal data:', {
+        buses: busesData?.length || 0,
+        routes: routesData?.length || 0,
+        drivers: driversData?.length || 0,
+        assignments: assignmentsData?.length || 0
+      });
+    } catch (error) {
+      console.error('Error loading minimal data:', error);
+      setError(error.message);
+      setConnectionStatus('error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const testConnectionAndLoadData = async () => {
     try {
@@ -50,21 +88,28 @@ export const SupabaseProvider = ({ children }) => {
       console.log('✅ Database connection successful, loading data...');
 
       // Load all data in parallel
-      const [busesData, routesData, stopsData, schedulesData, driversData, feedbackData] = await Promise.all([
+      const [busesData, routesData, stopsData, schedulesData, driversData, feedbackData, assignmentsData] = await Promise.all([
         supabaseHelpers.getBuses(),
         supabaseHelpers.getRoutes(),
         supabaseHelpers.getStops(),
         supabaseHelpers.getSchedules(),
         supabaseHelpers.getDrivers(),
-        supabaseHelpers.getFeedback()
+        supabaseHelpers.getFeedback(),
+        supabaseHelpers.getDriverBusAssignments()
       ]);
 
+      console.log('🚌 Buses data loaded:', busesData?.length || 0, 'buses');
+      console.log('🚌 Sample bus data:', busesData?.[0]);
+      console.log('🚌 Routes data loaded:', routesData?.length || 0, 'routes');
+      console.log('🚌 Sample route data:', routesData?.[0]);
+      
       setBuses(busesData || []);
       setRoutes(routesData || []);
       setStops(stopsData || []);
       setSchedules(schedulesData || []);
       setDrivers(driversData || []);
       setFeedback(feedbackData || []);
+      setDriverBusAssignments(assignmentsData || []);
       
       console.log('✅ All data loaded successfully');
     } catch (err) {
@@ -83,14 +128,15 @@ export const SupabaseProvider = ({ children }) => {
         // Update bus location in real-time
         setBuses(prevBuses => {
           const updatedBuses = prevBuses.map(bus => {
-            if (bus.id === payload.new.bus_id) {
+            if (bus.id === payload.new.id) {
               return {
                 ...bus,
-                current_location: {
-                  latitude: payload.new.latitude,
-                  longitude: payload.new.longitude
-                },
-                last_updated: payload.new.updated_at
+                latitude: payload.new.latitude,
+                longitude: payload.new.longitude,
+                speed: payload.new.speed,
+                heading: payload.new.heading,
+                tracking_status: payload.new.tracking_status,
+                last_location_update: payload.new.last_location_update
               };
             }
             return bus;
@@ -132,14 +178,6 @@ export const SupabaseProvider = ({ children }) => {
     }
   };
 
-  const updateBusLocation = async (busId, latitude, longitude) => {
-    try {
-      await supabaseHelpers.updateBusLocation(busId, latitude, longitude);
-    } catch (err) {
-      console.error('Error updating bus location:', err);
-      throw err;
-    }
-  };
 
   // Route operations
   const getRouteById = async (id) => {
@@ -209,11 +247,191 @@ export const SupabaseProvider = ({ children }) => {
     }
   };
 
-  const refreshData = () => {
-    testConnectionAndLoadData();
+  const getDriverSchedules = async (driverId) => {
+    try {
+      return await supabaseHelpers.getDriverSchedules(driverId);
+    } catch (err) {
+      console.error('Error getting driver schedules:', err);
+      throw err;
+    }
+  };
+
+  const getDriverBuses = async (driverId) => {
+    try {
+      return await supabaseHelpers.getDriverBuses(driverId);
+    } catch (err) {
+      console.error('Error getting driver buses:', err);
+      throw err;
+    }
+  };
+
+  const updateDriverStatus = async (driverId, status) => {
+    try {
+      return await supabaseHelpers.updateDriverStatus(driverId, status);
+    } catch (err) {
+      console.error('Error updating driver status:', err);
+      throw err;
+    }
+  };
+
+  const startTrip = async (driverId, busId, routeId) => {
+    try {
+      return await supabaseHelpers.startTrip(driverId, busId, routeId);
+    } catch (err) {
+      console.error('Error starting trip:', err);
+      throw err;
+    }
+  };
+
+  const endTrip = async (tripId, endData) => {
+    try {
+      return await supabaseHelpers.endTrip(tripId, endData);
+    } catch (err) {
+      console.error('Error ending trip:', err);
+      throw err;
+    }
+  };
+
+  const updatePassengerCount = async (busId, passengerCount) => {
+    try {
+      return await supabaseHelpers.updatePassengerCount(busId, passengerCount);
+    } catch (err) {
+      console.error('Error updating passenger count:', err);
+      throw err;
+    }
+  };
+
+  const reportEmergency = async (driverId, emergencyData) => {
+    try {
+      return await supabaseHelpers.reportEmergency(driverId, emergencyData);
+    } catch (err) {
+      console.error('Error reporting emergency:', err);
+      throw err;
+    }
+  };
+
+  const reportMaintenanceIssue = async (driverId, issueData) => {
+    try {
+      return await supabaseHelpers.reportMaintenanceIssue(driverId, issueData);
+    } catch (err) {
+      console.error('Error reporting maintenance issue:', err);
+      throw err;
+    }
+  };
+
+  const getDriverPerformance = async (driverId, period = 'week') => {
+    try {
+      return await supabaseHelpers.getDriverPerformance(driverId, period);
+    } catch (err) {
+      console.error('Error getting driver performance:', err);
+      throw err;
+    }
+  };
+
+  const submitPassengerFeedback = async (userId, feedbackData) => {
+    try {
+      return await supabaseHelpers.submitPassengerFeedback(userId, feedbackData);
+    } catch (err) {
+      console.error('Error submitting passenger feedback:', err);
+      throw err;
+    }
+  };
+
+  const getPassengerFeedback = async (userId, filters = {}) => {
+    try {
+      return await supabaseHelpers.getPassengerFeedback(userId, filters);
+    } catch (err) {
+      console.error('Error getting passenger feedback:', err);
+      throw err;
+    }
+  };
+
+  const updateBusCapacityStatus = async (busId, capacityPercentage) => {
+    try {
+      return await supabaseHelpers.updateBusCapacityStatus(busId, capacityPercentage);
+    } catch (err) {
+      console.error('Error updating bus capacity status:', err);
+      throw err;
+    }
+  };
+
+  const getBusCapacityStatus = async (busId) => {
+    try {
+      return await supabaseHelpers.getBusCapacityStatus(busId);
+    } catch (err) {
+      console.error('Error getting bus capacity status:', err);
+      throw err;
+    }
+  };
+
+  const authenticateDriver = async (email, password) => {
+    try {
+      return await supabaseHelpers.authenticateDriver(email, password);
+    } catch (err) {
+      console.error('Error authenticating driver:', err);
+      throw err;
+    }
+  };
+
+  const updateBusLocation = async (locationData) => {
+    try {
+      return await supabaseHelpers.updateBusLocation(locationData);
+    } catch (err) {
+      console.error('Error updating bus location:', err);
+      throw err;
+    }
+  };
+
+  const startDriverSession = async (driverId, busId) => {
+    try {
+      return await supabaseHelpers.startDriverSession(driverId, busId);
+    } catch (err) {
+      console.error('Error starting driver session:', err);
+      throw err;
+    }
+  };
+
+  const endDriverSession = async (sessionId) => {
+    try {
+      return await supabaseHelpers.endDriverSession(sessionId);
+    } catch (err) {
+      console.error('Error ending driver session:', err);
+      throw err;
+    }
+  };
+
+  const refreshData = async () => {
+    try {
+      await testConnectionAndLoadData();
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      throw error;
+    }
+  };
+
+  const refreshDriverData = async () => {
+    try {
+      console.log('🔄 Refreshing driver data...');
+      const { data: driversData } = await supabase.from('drivers').select('*').limit(10);
+      const { data: assignmentsData } = await supabase.from('driver_bus_assignments').select('*');
+      
+      setDrivers(driversData || []);
+      setDriverBusAssignments(assignmentsData || []);
+      
+      console.log('✅ Driver data refreshed:', {
+        drivers: driversData?.length || 0,
+        assignments: assignmentsData?.length || 0
+      });
+    } catch (error) {
+      console.error('❌ Error refreshing driver data:', error);
+      throw error;
+    }
   };
 
   const value = {
+    // Supabase client
+    supabase,
+    
     // State
     buses,
     routes,
@@ -221,13 +439,13 @@ export const SupabaseProvider = ({ children }) => {
     schedules,
     drivers,
     feedback,
+    driverBusAssignments,
     loading,
     error,
     connectionStatus,
     
     // Operations
     getBusById,
-    updateBusLocation,
     getRouteById,
     getStopsByRoute,
     getSchedulesByRoute,
@@ -235,7 +453,25 @@ export const SupabaseProvider = ({ children }) => {
     createUser,
     getUserById,
     getDriverById,
-    refreshData
+    getDriverSchedules,
+    getDriverBuses,
+    updateDriverStatus,
+    startTrip,
+    endTrip,
+    updatePassengerCount,
+    reportEmergency,
+    reportMaintenanceIssue,
+    getDriverPerformance,
+    submitPassengerFeedback,
+    getPassengerFeedback,
+    updateBusCapacityStatus,
+    getBusCapacityStatus,
+    authenticateDriver,
+    updateBusLocation,
+    startDriverSession,
+    endDriverSession,
+    refreshData,
+    refreshDriverData
   };
 
   return (

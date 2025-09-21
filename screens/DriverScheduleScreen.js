@@ -138,7 +138,7 @@ export default function DriverScheduleScreen({ navigation }) {
     return (
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2B973A" />
+          <ActivityIndicator size="large" color="#f59e0b" />
           <Text style={styles.loadingText}>Loading schedule data...</Text>
         </View>
       </View>
@@ -152,7 +152,13 @@ export default function DriverScheduleScreen({ navigation }) {
           <Ionicons name="warning" size={48} color="#F44336" />
           <Text style={styles.errorText}>Failed to load schedule data</Text>
           <Text style={styles.errorSubtext}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={refreshData}>
+          <TouchableOpacity style={styles.retryButton} onPress={async () => {
+            try {
+              await refreshData();
+            } catch (error) {
+              console.error('Error refreshing data:', error);
+            }
+          }}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -232,14 +238,14 @@ export default function DriverScheduleScreen({ navigation }) {
       <View style={styles.headerContainer}>
         <View style={styles.headerRow}>
           <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-            <Ionicons name="menu" size={24} color="#fff" />
+            <Ionicons name="menu" size={24} color="#374151" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Work Schedule</Text>
             <Text style={styles.headerSubtitle}>Metro NaviGo Driver</Text>
           </View>
           <TouchableOpacity style={styles.profileButton} onPress={handleProfilePress}>
-            <Ionicons name="person-circle" size={32} color="#fff" />
+            <Ionicons name="person-circle" size={32} color="#374151" />
           </TouchableOpacity>
         </View>
       </View>
@@ -303,18 +309,20 @@ export default function DriverScheduleScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FAFAFA',
   },
   headerContainer: {
-    backgroundColor: '#2B973A',
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    backgroundColor: '#FFFFFF',
+    paddingTop: 60,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
   headerRow: {
     flexDirection: 'row',
@@ -329,16 +337,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 2,
+    color: '#1A1A1A',
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 4,
     fontFamily: 'System',
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
-    color: '#fff',
-    fontSize: 14,
-    opacity: 0.8,
+    color: '#6B7280',
+    fontSize: 16,
+    fontWeight: '500',
     fontFamily: 'System',
   },
   profileButton: {
@@ -376,7 +385,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   selectedDayCard: {
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
   },
   dayName: {
     fontSize: 14,
@@ -575,7 +584,7 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   retryButton: {
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,

@@ -9,15 +9,36 @@ import {
   Dimensions,
   Pressable,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSupabase } from '../contexts/SupabaseContext';
+import { useDrawer } from '../contexts/DrawerContext';
+import CapacityStatusModal from '../components/CapacityStatusModal';
 
 const { width } = Dimensions.get('window');
+
+// Simple UUID generator for React Native
+const generateUUID = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
 export default function DriverHomeScreen({ navigation }) {
   const [isOnDuty, setIsOnDuty] = useState(false);
   const [currentTrip, setCurrentTrip] = useState(null);
+  const [passengerCount, setPassengerCount] = useState(0);
+  const [tripStartTime, setTripStartTime] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [showPassengerModal, setShowPassengerModal] = useState(false);
+  const [showCapacityModal, setShowCapacityModal] = useState(false);
+  const [currentCapacity, setCurrentCapacity] = useState(0);
+  const [currentBus, setCurrentBus] = useState(null);
+  const [currentDriver, setCurrentDriver] = useState(null);
 
   // Get data from Supabase context
   const { 
@@ -25,19 +46,77 @@ export default function DriverHomeScreen({ navigation }) {
     routes, 
     drivers, 
     schedules, 
+    driverBusAssignments,
     loading, 
     error, 
-    refreshData 
+    refreshData,
+    getDriverSchedules,
+    getDriverBuses,
+    updateDriverStatus,
+    startTrip,
+    endTrip,
+    updatePassengerCount,
+    reportEmergency,
+    reportMaintenanceIssue,
+    updateBusCapacityStatus,
+    getBusCapacityStatus,
+    startDriverSession,
+    endDriverSession
   } = useSupabase();
+
+  // Get drawer context
+  const { openDrawer } = useDrawer();
+
+  // Load current driver information on component mount
+  useEffect(() => {
+    const loadCurrentDriver = async () => {
+      try {
+        const driverSession = await AsyncStorage.getItem('driverSession');
+        if (driverSession) {
+          const session = JSON.parse(driverSession);
+          const driver = drivers.find(d => d.id === session.driver_id);
+          if (driver) {
+            setCurrentDriver(driver);
+            console.log('✅ Current driver loaded:', driver);
+            
+            // Find assigned bus for this driver using driver-bus assignments
+            const assignment = driverBusAssignments.find(assignment => assignment.driver_id === driver.id);
+            if (assignment) {
+              // Find the bus details from the buses array
+              const assignedBus = buses.find(bus => bus.id === assignment.bus_id);
+              if (assignedBus) {
+                setCurrentBus(assignedBus);
+                console.log('✅ Assigned bus found:', assignedBus);
+              } else {
+                console.log('❌ Bus not found for assignment:', assignment.bus_id);
+              }
+            } else {
+              console.log('❌ No bus assignment found for driver:', driver.id);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading current driver:', error);
+      }
+    };
+
+    if (drivers.length > 0 && driverBusAssignments.length > 0) {
+      loadCurrentDriver();
+    }
+  }, [drivers, buses, driverBusAssignments, routes]);
 
   // Calculate driver stats from real data
   const calculateDriverStats = () => {
+    if (!currentDriver) return [];
+    
     const today = new Date().toDateString();
     const todaySchedules = schedules.filter(schedule => 
+      schedule.bus_id === currentBus?.id && 
       new Date(schedule.departure_time).toDateString() === today
     );
     
-    const activeBuses = buses.filter(bus => bus.status === 'active');
+    const driverBuses = buses.filter(bus => bus.driver_id === currentDriver.id);
+    const activeBuses = driverBuses.filter(bus => bus.status === 'active');
     const totalPassengers = activeBuses.reduce((sum, bus) => sum + (bus.current_passengers || 0), 0);
     const totalDistance = activeBuses.reduce((sum, bus) => sum + (bus.distance_traveled || 0), 0);
     
@@ -106,6 +185,18 @@ export default function DriverHomeScreen({ navigation }) {
       action: 'endTrip',
     },
     {
+      title: 'Passengers',
+      icon: 'people',
+      color: '#2196F3',
+      action: 'passengers',
+    },
+    {
+      title: 'Capacity',
+      icon: 'speedometer',
+      color: '#00BCD4',
+      action: 'capacity',
+    },
+    {
       title: 'Report Issue',
       icon: 'alert-circle',
       color: '#FF9800',
@@ -117,38 +208,143 @@ export default function DriverHomeScreen({ navigation }) {
       color: '#E91E63',
       action: 'emergency',
     },
+    {
+      title: 'Profile',
+      icon: 'person',
+      color: '#9C27B0',
+      action: 'profile',
+    },
   ];
 
-  const handleQuickAction = (action) => {
+  const handleQuickAction = async (action) => {
+    // Use the current driver from state
+    if (!currentDriver) {
+      Alert.alert('Error', 'Driver not found. Please log in again.');
+      return;
+    }
+    
+    // Use the current bus from state
+    if (!currentBus) {
+      Alert.alert('No Bus Assigned', 'No bus is currently assigned to you.');
+      return;
+    }
+
     switch (action) {
       case 'startTrip':
         if (isOnDuty) {
           Alert.alert('Already on duty', 'You are already on an active trip.');
         } else {
-          setIsOnDuty(true);
-          setCurrentTrip({
-            route: 'Route 101',
-            startTime: new Date().toLocaleTimeString(),
-            passengers: 0,
-          });
-          Alert.alert('Trip Started', 'Your trip has been started successfully.');
+          try {
+            setIsOnDuty(true);
+            setTripStartTime(new Date());
+            
+            // Start trip in database
+            // Use a default route ID if currentBus.route_id is null/undefined
+            const routeId = currentBus.route_id || routes[0]?.id;
+            if (!routeId) {
+              Alert.alert('Error', 'No route available for this bus. Please contact support.');
+              setIsOnDuty(false);
+              return;
+            }
+            
+            const tripResult = await startTrip(currentDriver.id, currentBus.id, routeId);
+            
+            // Update driver status
+            await updateDriverStatus(currentDriver.id, 'active');
+            
+            // Create driver session in database
+            const driverSession = await startDriverSession(currentDriver.id, currentBus.id);
+            
+            // Store session in AsyncStorage
+            await AsyncStorage.setItem('driverSession', JSON.stringify(driverSession));
+            
+            setCurrentTrip({
+              route: `Route ${routes.find(r => r.id === currentBus.route_id)?.route_number || 'Unknown'}`,
+              startTime: new Date().toLocaleTimeString(),
+              passengers: 0,
+              busId: currentBus.id,
+              scheduleId: tripResult?.id || schedules.find(s => s.bus_id === currentBus.id && s.status === 'scheduled')?.id
+            });
+            
+            Alert.alert('Trip Started', 'Your trip has been started successfully.');
+          } catch (error) {
+            console.error('Error starting trip:', error);
+            Alert.alert('Error', 'Failed to start trip. Please try again.');
+          }
         }
         break;
       case 'endTrip':
-        if (!isOnDuty) {
-          Alert.alert('No active trip', 'You are not currently on duty.');
+        if (!isOnDuty || !currentTrip) {
+          Alert.alert('No active trip', 'You are not currently on an active trip.');
         } else {
-          setIsOnDuty(false);
-          setCurrentTrip(null);
-          Alert.alert('Trip Ended', 'Your trip has been ended successfully.');
+          try {
+            // End trip in database
+            await endTrip(currentTrip.scheduleId, {
+              busId: currentTrip.busId
+            });
+            
+            // Update driver status
+            await updateDriverStatus(currentDriver.id, 'inactive');
+            
+            // End driver session
+            const sessionData = await AsyncStorage.getItem('driverSession');
+            if (sessionData) {
+              const session = JSON.parse(sessionData);
+              await endDriverSession(session.id);
+            }
+            
+            // Clear driver session
+            await AsyncStorage.removeItem('driverSession');
+            
+            setIsOnDuty(false);
+            setCurrentTrip(null);
+            setPassengerCount(0);
+            setTripStartTime(null);
+            
+            Alert.alert('Trip Ended', 'Your trip has been ended successfully.');
+          } catch (error) {
+            console.error('Error ending trip:', error);
+            Alert.alert('Error', 'Failed to end trip. Please try again.');
+          }
+        }
+        break;
+      case 'passengers':
+        setShowPassengerModal(true);
+        break;
+      case 'capacity':
+        if (!currentBus) {
+          Alert.alert('No Bus Assigned', 'No bus is currently assigned to you.');
+        } else {
+          setCurrentBus(currentBus);
+          setCurrentCapacity(currentBus.capacity_percentage || 0);
+          setShowCapacityModal(true);
         }
         break;
       case 'reportIssue':
-        Alert.alert('Report Issue', 'Issue reporting feature coming soon!');
+        navigation.navigate('DriverMaintenance');
         break;
       case 'emergency':
-        Alert.alert('Emergency', 'Emergency contact feature coming soon!');
+        navigation.navigate('DriverEmergency');
         break;
+      case 'profile':
+        navigation.navigate('DriverProfile');
+        break;
+    }
+  };
+
+  const handleCapacityUpdate = async (busId, capacityPercentage) => {
+    try {
+      await updateBusCapacityStatus(busId, capacityPercentage);
+      setCurrentCapacity(capacityPercentage);
+      // Update the bus in the local state
+      const updatedBus = buses.find(bus => bus.id === busId);
+      if (updatedBus) {
+        updatedBus.capacity_percentage = capacityPercentage;
+        updatedBus.current_passengers = Math.round((capacityPercentage / 100) * 50);
+      }
+    } catch (error) {
+      console.error('Error updating capacity:', error);
+      throw error;
     }
   };
 
@@ -157,7 +353,7 @@ export default function DriverHomeScreen({ navigation }) {
   };
 
   const handleMenuPress = () => {
-    navigation.getParent()?.openDrawer();
+    openDrawer();
   };
 
   const handleRoleSwitch = () => {
@@ -181,7 +377,7 @@ export default function DriverHomeScreen({ navigation }) {
     return (
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2B973A" />
+          <ActivityIndicator size="large" color="#3B82F6" />
           <Text style={styles.loadingText}>Loading driver data...</Text>
         </View>
       </View>
@@ -195,7 +391,13 @@ export default function DriverHomeScreen({ navigation }) {
           <Ionicons name="warning" size={48} color="#F44336" />
           <Text style={styles.errorText}>Failed to load driver data</Text>
           <Text style={styles.errorSubtext}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={refreshData}>
+          <TouchableOpacity style={styles.retryButton} onPress={async () => {
+            try {
+              await refreshData();
+            } catch (error) {
+              console.error('Error refreshing data:', error);
+            }
+          }}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -209,14 +411,14 @@ export default function DriverHomeScreen({ navigation }) {
       <View style={styles.headerContainer}>
         <View style={styles.headerRow}>
           <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-            <Ionicons name="menu" size={24} color="#fff" />
+            <Ionicons name="menu" size={24} color="#374151" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Driver Dashboard</Text>
             <Text style={styles.headerSubtitle}>Metro NaviGo Driver</Text>
           </View>
           <TouchableOpacity style={styles.profileButton} onPress={handleProfilePress}>
-            <Ionicons name="person-circle" size={32} color="#fff" />
+            <Ionicons name="person-circle" size={32} color="#374151" />
           </TouchableOpacity>
         </View>
         
@@ -224,12 +426,12 @@ export default function DriverHomeScreen({ navigation }) {
           <View style={styles.statusRow}>
             <View style={styles.statusInfo}>
               <Text style={styles.statusLabel}>Status</Text>
-              <Text style={[styles.statusText, { color: isOnDuty ? '#4CAF50' : '#FF6B6B' }]}>
+              <Text style={[styles.statusText, { color: isOnDuty ? '#10B981' : '#EF4444' }]}>
                 {isOnDuty ? 'On Duty' : 'Off Duty'}
               </Text>
             </View>
             <TouchableOpacity style={styles.switchButton} onPress={handleRoleSwitch}>
-              <Ionicons name="car" size={20} color="#fff" />
+              <Ionicons name="car" size={20} color="#374151" />
               <Text style={styles.switchText}>Switch</Text>
             </TouchableOpacity>
           </View>
@@ -237,77 +439,237 @@ export default function DriverHomeScreen({ navigation }) {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Current Trip */}
+        {/* Current Trip - Prominent Card */}
         {currentTrip && (
           <View style={styles.currentTripCard}>
-            <Text style={styles.currentTripTitle}>Current Trip</Text>
-            <View style={styles.tripInfo}>
-              <Text style={styles.tripRoute}>{currentTrip.route}</Text>
-              <Text style={styles.tripTime}>Started: {currentTrip.startTime}</Text>
-              <Text style={styles.tripPassengers}>Passengers: {currentTrip.passengers}</Text>
+            <View style={styles.tripHeader}>
+              <View style={styles.tripIconContainer}>
+                <Ionicons name="bus" size={24} color="#3B82F6" />
+              </View>
+              <View style={styles.tripHeaderText}>
+                <Text style={styles.currentTripTitle}>Active Trip</Text>
+                <Text style={styles.tripRoute}>{currentTrip.route}</Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: '#10B981' }]}>
+                <Text style={styles.statusBadgeText}>ON TRIP</Text>
+              </View>
+            </View>
+            
+            <View style={styles.tripStats}>
+              <View style={styles.tripStatItem}>
+                <Ionicons name="people" size={20} color="#6B7280" />
+                <Text style={styles.tripStatLabel}>Passengers</Text>
+                <Text style={styles.tripStatValue}>{passengerCount}</Text>
+              </View>
+              <View style={styles.tripStatItem}>
+                <Ionicons name="time" size={20} color="#6B7280" />
+                <Text style={styles.tripStatLabel}>Duration</Text>
+                <Text style={styles.tripStatValue}>
+                  {tripStartTime ? Math.floor((new Date() - tripStartTime) / 60000) : 0}m
+                </Text>
+              </View>
+              <View style={styles.tripStatItem}>
+                <Ionicons name="speedometer" size={20} color="#6B7280" />
+                <Text style={styles.tripStatLabel}>Capacity</Text>
+                <Text style={styles.tripStatValue}>{currentCapacity}%</Text>
+              </View>
             </View>
           </View>
         )}
 
-        {/* Driver Stats */}
-        <Text style={styles.sectionTitle}>Today's Stats</Text>
-        <View style={styles.statsGrid}>
-          {driverStats.map((stat, index) => (
-            <View key={index} style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: stat.color + '20' }]}>
-                <MaterialCommunityIcons name={stat.icon} size={24} color={stat.color} />
+        {/* Stats Overview - Horizontal Cards */}
+        <View style={styles.statsOverview}>
+          <Text style={styles.sectionTitle}>Today's Overview</Text>
+          <View style={styles.statsRow}>
+            {driverStats.slice(0, 2).map((stat, index) => (
+              <View key={index} style={styles.statCardHorizontal}>
+                <View style={[styles.statIconSmall, { backgroundColor: stat.color + '15' }]}>
+                  <MaterialCommunityIcons name={stat.icon} size={20} color={stat.color} />
+                </View>
+                <View style={styles.statContent}>
+                  <Text style={styles.statValueSmall}>{stat.value}</Text>
+                  <Text style={styles.statTitleSmall}>{stat.title}</Text>
+                </View>
               </View>
-              <Text style={styles.statValue}>{stat.value}</Text>
-              <Text style={styles.statTitle}>{stat.title}</Text>
-            </View>
-          ))}
+            ))}
+          </View>
+          <View style={styles.statsRow}>
+            {driverStats.slice(2, 4).map((stat, index) => (
+              <View key={index + 2} style={styles.statCardHorizontal}>
+                <View style={[styles.statIconSmall, { backgroundColor: stat.color + '15' }]}>
+                  <MaterialCommunityIcons name={stat.icon} size={20} color={stat.color} />
+                </View>
+                <View style={styles.statContent}>
+                  <Text style={styles.statValueSmall}>{stat.value}</Text>
+                  <Text style={styles.statTitleSmall}>{stat.title}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
         </View>
 
-        {/* Quick Actions */}
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionsGrid}>
-          {quickActions.map((action, index) => (
-            <Pressable
-              key={index}
-              style={({ pressed }) => [
-                styles.actionCard,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={() => handleQuickAction(action.action)}
-            >
-              <View style={[styles.actionIcon, { backgroundColor: action.color + '20' }]}>
-                <Ionicons name={action.icon} size={24} color={action.color} />
-              </View>
-              <Text style={styles.actionTitle}>{action.title}</Text>
-            </Pressable>
-          ))}
+        {/* Quick Actions - Essential Actions */}
+        <View style={styles.quickActionsSection}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.quickActionsGrid}>
+            {quickActions.map((action, index) => (
+              <Pressable
+                key={index}
+                style={({ pressed }) => [
+                  styles.quickActionCard,
+                  pressed && styles.cardPressed,
+                ]}
+                onPress={() => handleQuickAction(action.action)}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: action.color + '15' }]}>
+                  <Ionicons name={action.icon} size={24} color={action.color} />
+                </View>
+                <Text style={styles.quickActionTitle}>{action.title}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
-        {/* Recent Trips */}
-        <Text style={styles.sectionTitle}>Recent Trips</Text>
-        <View style={styles.tripsList}>
-          {recentTrips.map((trip) => (
-            <View key={trip.id} style={styles.tripCard}>
-              <View style={styles.tripHeader}>
-                <Text style={styles.tripRoute}>{trip.route}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: '#4CAF50' }]}>
-                  <Text style={styles.statusBadgeText}>{trip.status}</Text>
+        {/* Recent Trips - Compact List */}
+        {recentTrips.length > 0 && (
+          <View style={styles.recentTripsSection}>
+            <Text style={styles.sectionTitle}>Recent Trips</Text>
+            <View style={styles.tripsListCompact}>
+              {recentTrips.map((trip) => (
+                <View key={trip.id} style={styles.tripCardCompact}>
+                  <View style={styles.tripCardLeft}>
+                    <View style={styles.tripIconSmall}>
+                      <Ionicons name="bus" size={16} color="#3B82F6" />
+                    </View>
+                    <View style={styles.tripInfoCompact}>
+                      <Text style={styles.tripRouteCompact}>{trip.route}</Text>
+                      <Text style={styles.tripTimeCompact}>{trip.startTime} - {trip.endTime}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.tripCardRight}>
+                    <View style={[styles.statusBadgeSmall, { backgroundColor: '#10B981' }]}>
+                      <Text style={styles.statusBadgeTextSmall}>{trip.status}</Text>
+                    </View>
+                    <Text style={styles.tripPassengersCompact}>{trip.passengers} passengers</Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.tripDetails}>
-                <View style={styles.tripDetail}>
-                  <Ionicons name="time" size={16} color="#666" />
-                  <Text style={styles.tripDetailText}>{trip.startTime} - {trip.endTime}</Text>
-                </View>
-                <View style={styles.tripDetail}>
-                  <Ionicons name="people" size={16} color="#666" />
-                  <Text style={styles.tripDetailText}>{trip.passengers} passengers</Text>
-                </View>
-              </View>
+              ))}
             </View>
-          ))}
-        </View>
+          </View>
+        )}
       </ScrollView>
+
+      {/* Passenger Management Modal */}
+      <Modal
+        visible={showPassengerModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowPassengerModal(false)}>
+              <Text style={styles.modalCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Passenger Count</Text>
+            <TouchableOpacity onPress={() => setShowPassengerModal(false)}>
+              <Text style={styles.modalSave}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.modalContent}>
+            <View style={styles.passengerCounter}>
+              <Text style={styles.passengerLabel}>Current Passengers</Text>
+              <View style={styles.counterContainer}>
+                <TouchableOpacity 
+                  style={styles.counterButton}
+                  onPress={() => setPassengerCount(Math.max(0, passengerCount - 1))}
+                >
+                  <Ionicons name="remove" size={24} color="#fff" />
+                </TouchableOpacity>
+                <Text style={styles.counterText}>{passengerCount}</Text>
+                <TouchableOpacity 
+                  style={styles.counterButton}
+                  onPress={() => setPassengerCount(passengerCount + 1)}
+                >
+                  <Ionicons name="add" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.capacityText}>Max Capacity: 50</Text>
+            </View>
+
+            <View style={styles.passengerActions}>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={async () => {
+                  try {
+                    setPassengerCount(0);
+                    if (currentTrip?.busId) {
+                      await updatePassengerCount(currentTrip.busId, 0);
+                    }
+                    Alert.alert('Reset', 'Passenger count has been reset to 0');
+                  } catch (error) {
+                    console.error('Error resetting passenger count:', error);
+                    Alert.alert('Error', 'Failed to reset passenger count');
+                  }
+                }}
+              >
+                <Ionicons name="refresh" size={20} color="#3B82F6" />
+                <Text style={styles.actionButtonText}>Reset Count</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={async () => {
+                  try {
+                    const newCount = passengerCount + 1;
+                    setPassengerCount(newCount);
+                    if (currentTrip?.busId) {
+                      await updatePassengerCount(currentTrip.busId, newCount);
+                    }
+                    Alert.alert('Boarding', 'Passenger boarding recorded');
+                  } catch (error) {
+                    console.error('Error recording boarding:', error);
+                    Alert.alert('Error', 'Failed to record boarding');
+                  }
+                }}
+              >
+                <Ionicons name="arrow-up" size={20} color="#10B981" />
+                <Text style={styles.actionButtonText}>Record Boarding</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={async () => {
+                  try {
+                    const newCount = Math.max(0, passengerCount - 1);
+                    setPassengerCount(newCount);
+                    if (currentTrip?.busId) {
+                      await updatePassengerCount(currentTrip.busId, newCount);
+                    }
+                    Alert.alert('Alighting', 'Passenger alighting recorded');
+                  } catch (error) {
+                    console.error('Error recording alighting:', error);
+                    Alert.alert('Error', 'Failed to record alighting');
+                  }
+                }}
+              >
+                <Ionicons name="arrow-down" size={20} color="#EF4444" />
+                <Text style={styles.actionButtonText}>Record Alighting</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Capacity Status Modal */}
+      <CapacityStatusModal
+        visible={showCapacityModal}
+        onClose={() => setShowCapacityModal(false)}
+        currentCapacity={currentCapacity}
+        onUpdateCapacity={handleCapacityUpdate}
+        busId={currentBus?.id}
+        busInfo={currentBus}
+      />
     </View>
   );
 }
@@ -315,52 +677,67 @@ export default function DriverHomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FAFAFA',
   },
   headerContainer: {
-    backgroundColor: '#2B973A',
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    backgroundColor: '#FFFFFF',
+    paddingTop: 60,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 20,
   },
   menuButton: {
-    padding: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F8F9FA',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
   },
   headerTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 2,
+    color: '#1A1A1A',
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 4,
     fontFamily: 'System',
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
-    color: '#fff',
-    fontSize: 14,
-    opacity: 0.8,
+    color: '#6B7280',
+    fontSize: 16,
+    fontWeight: '500',
     fontFamily: 'System',
   },
   profileButton: {
-    padding: 4,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F8F9FA',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   dutyStatus: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    padding: 15,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   statusRow: {
     flexDirection: 'row',
@@ -371,252 +748,516 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statusLabel: {
-    color: '#fff',
-    fontSize: 12,
-    opacity: 0.8,
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '500',
     fontFamily: 'System',
+    marginBottom: 4,
   },
   statusText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     fontFamily: 'System',
   },
   switchButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   switchText: {
-    color: '#fff',
-    fontSize: 12,
-    marginLeft: 4,
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
     fontFamily: 'System',
   },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   currentTripCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 20,
-    marginBottom: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    marginTop: 24,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  tripHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  tripIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F0F9FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  tripHeaderText: {
+    flex: 1,
   },
   currentTripTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 12,
-    fontFamily: 'System',
-  },
-  tripInfo: {
-    gap: 4,
-  },
-  tripRoute: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2B973A',
-    fontFamily: 'System',
-  },
-  tripTime: {
-    fontSize: 14,
-    color: '#666',
-    fontFamily: 'System',
-  },
-  tripPassengers: {
-    fontSize: 14,
-    color: '#666',
-    fontFamily: 'System',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 15,
-    fontFamily: 'System',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 25,
-  },
-  statCard: {
-    width: (width - 60) / 2,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 15,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#000',
+    fontWeight: '600',
+    color: '#6B7280',
     marginBottom: 4,
     fontFamily: 'System',
   },
-  statTitle: {
+  tripRoute: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    fontFamily: 'System',
+    letterSpacing: -0.3,
+  },
+  tripStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  tripStatItem: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginHorizontal: 4,
+  },
+  tripStatLabel: {
     fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
+    color: '#6B7280',
+    fontWeight: '500',
+    marginTop: 8,
+    marginBottom: 4,
     fontFamily: 'System',
   },
-  actionsGrid: {
+  tripStatValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    fontFamily: 'System',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 20,
+    fontFamily: 'System',
+    letterSpacing: -0.3,
+  },
+  statsOverview: {
+    marginBottom: 32,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  statCardHorizontal: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statIconSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  statContent: {
+    flex: 1,
+  },
+  statValueSmall: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 4,
+    fontFamily: 'System',
+    letterSpacing: -0.3,
+  },
+  statTitleSmall: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  quickActionsSection: {
+    marginBottom: 32,
+  },
+  quickActionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 25,
   },
-  actionCard: {
-    width: (width - 60) / 2,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 15,
+  quickActionCard: {
+    width: (width - 72) / 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   cardPressed: {
-    transform: [{ scale: 0.98 }],
-    opacity: 0.9,
+    transform: [{ scale: 0.96 }],
+    opacity: 0.8,
   },
-  actionIcon: {
+  quickActionIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  actionTitle: {
-    fontSize: 14,
+  quickActionTitle: {
+    fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: '#1A1A1A',
     textAlign: 'center',
     fontFamily: 'System',
   },
-  tripsList: {
-    marginBottom: 20,
+  recentTripsSection: {
+    marginBottom: 32,
   },
-  tripCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+  tripsListCompact: {
+    gap: 12,
+  },
+  tripCardCompact: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  tripCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  tripCardRight: {
+    alignItems: 'flex-end',
+  },
+  tripIconSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F0F9FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  tripInfoCompact: {
+    flex: 1,
+  },
+  tripRouteCompact: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 4,
+    fontFamily: 'System',
+  },
+  tripTimeCompact: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  statusBadgeSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  statusBadgeTextSmall: {
+    fontSize: 10,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontFamily: 'System',
+  },
+  tripPassengersCompact: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  tripsList: {
+    marginBottom: 32,
+  },
+  tripCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   tripHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   tripRoute: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
     fontFamily: 'System',
+    letterSpacing: -0.3,
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   statusBadgeText: {
     fontSize: 12,
-    color: '#fff',
+    color: '#FFFFFF',
     fontWeight: '600',
     fontFamily: 'System',
   },
   tripDetails: {
-    gap: 4,
+    gap: 8,
   },
   tripDetail: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
   tripDetailText: {
     fontSize: 14,
-    color: '#666',
-    marginLeft: 6,
+    color: '#374151',
+    marginLeft: 8,
+    fontWeight: '500',
     fontFamily: 'System',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FAFAFA',
   },
   loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
+    marginTop: 16,
+    fontSize: 18,
+    color: '#6B7280',
+    fontWeight: '500',
     fontFamily: 'System',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
+    padding: 32,
+    backgroundColor: '#FAFAFA',
   },
   errorText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#F44336',
-    marginTop: 10,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#DC2626',
+    marginTop: 16,
     textAlign: 'center',
     fontFamily: 'System',
+    letterSpacing: -0.3,
   },
   errorSubtext: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 5,
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 8,
     textAlign: 'center',
+    fontWeight: '500',
     fontFamily: 'System',
   },
   retryButton: {
-    marginTop: 20,
-    backgroundColor: '#2B973A',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    marginTop: 24,
+    backgroundColor: '#3B82F6',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   retryButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    fontFamily: 'System',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  modalCancel: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '600',
+    fontFamily: 'System',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    fontFamily: 'System',
+    letterSpacing: -0.3,
+  },
+  modalSave: {
+    fontSize: 16,
+    color: '#3B82F6',
+    fontWeight: '600',
+    fontFamily: 'System',
+  },
+  modalContent: {
+    flex: 1,
+    padding: 24,
+  },
+  passengerCounter: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  passengerLabel: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 24,
+    fontFamily: 'System',
+    letterSpacing: -0.3,
+  },
+  counterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  counterButton: {
+    backgroundColor: '#3B82F6',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  counterText: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginHorizontal: 32,
+    fontFamily: 'System',
+    letterSpacing: -0.5,
+  },
+  capacityText: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  passengerActions: {
+    gap: 16,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  actionButtonText: {
+    fontSize: 16,
+    color: '#374151',
+    marginLeft: 16,
+    fontWeight: '600',
     fontFamily: 'System',
   },
 }); 

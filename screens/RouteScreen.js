@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   headerContainer: {
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -506,7 +506,7 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   trackButton: {
-    backgroundColor: '#2B973A',
+    backgroundColor: '#f59e0b',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

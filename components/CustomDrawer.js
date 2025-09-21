@@ -8,9 +8,11 @@ import {
   Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
 
 const CustomDrawer = ({ navigation, currentRole = 'passenger', onRoleChange }) => {
   const [isDriverMode, setIsDriverMode] = useState(currentRole === 'driver');
+  const { signOut, user } = useAuth();
 
   const handleRoleSwitch = (value) => {
     setIsDriverMode(value);
@@ -24,6 +26,27 @@ const CustomDrawer = ({ navigation, currentRole = 'passenger', onRoleChange }) =
       // Switch to passenger mode
       navigation.navigate('PassengerTabs');
     }
+  };
+
+  const handleSignOut = async () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Sign Out', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleMenuPress = (screenName, role) => {
@@ -70,7 +93,7 @@ const CustomDrawer = ({ navigation, currentRole = 'passenger', onRoleChange }) =
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
-          <Ionicons name="bus" size={32} color="#2B973A" />
+          <Ionicons name="bus" size={32} color="#f59e0b" />
           <Text style={styles.appName}>Metro NaviGo</Text>
         </View>
         <Text style={styles.version}>v1.0.0</Text>
@@ -86,7 +109,7 @@ const CustomDrawer = ({ navigation, currentRole = 'passenger', onRoleChange }) =
           <Switch
             value={isDriverMode}
             onValueChange={handleRoleSwitch}
-            trackColor={{ false: '#e9ecef', true: '#2B973A' }}
+            trackColor={{ false: '#e9ecef', true: '#f59e0b' }}
             thumbColor={isDriverMode ? '#fff' : '#fff'}
             style={styles.switch}
           />
@@ -123,9 +146,9 @@ const CustomDrawer = ({ navigation, currentRole = 'passenger', onRoleChange }) =
 
       {/* Footer */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.logoutButton}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
           <Ionicons name="log-out" size={20} color="#FF6B6B" />
-          <Text style={styles.logoutText}>Logout</Text>
+          <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -151,7 +174,7 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#2B973A',
+    color: '#f59e0b',
     marginLeft: 12,
     fontFamily: 'System',
   },
@@ -183,7 +206,7 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   activeRole: {
-    color: '#2B973A',
+    color: '#f59e0b',
     fontWeight: '600',
   },
   switch: {
