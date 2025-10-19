@@ -18,6 +18,16 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# Build directories
+android/app/.cxx/
+android/app/build/
+android/build/
+android/.gradle/
+android/.kotlin/
+
+# Log files
+*.log
+
 # Metro
 .metro-health-check*
 
@@ -33,6 +43,22 @@ yarn-error.*
 # local env files
 .env*.local
 .env
+.env.*
+!.env.example
+
+# Security - Never commit these
+*.key
+*.pem
+*.p12
+*.mobileprovision
+secrets/
+credentials/
+config/secrets.js
+
+# API Keys and sensitive data
+**/api-keys.json
+**/secrets.json
+**/credentials.json
 
 # typescript
 *.tsbuildinfo

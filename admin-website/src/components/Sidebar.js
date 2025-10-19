@@ -7,7 +7,6 @@ import {
   Users, 
   Calendar, 
   UserCheck, 
-  BarChart3, 
   Settings,
   Bell,
   X
@@ -24,7 +23,6 @@ const Sidebar = ({ isOpen, onClose }) => {
     { name: 'Schedule Management', href: '/schedules', icon: Calendar },
     { name: 'User Management', href: '/users', icon: UserCheck },
     { name: 'Ping Notifications', href: '/pings', icon: Bell },
-    { name: 'Reports & Analytics', href: '/reports', icon: BarChart3 },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
@@ -33,32 +31,39 @@ const Sidebar = ({ isOpen, onClose }) => {
       {/* Mobile overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden transition-opacity duration-300"
           onClick={onClose}
         />
       )}
       
       {/* Sidebar */}
       <div className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0
+        fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-xl border-r border-gray-200
+        transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200 bg-white">
-          <div className="flex items-center">
-            <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
-              <Bus className="w-5 h-5 text-white" />
+        {/* Header */}
+        <div className="flex items-center justify-between h-20 px-6 border-b border-gray-200 bg-white">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center shadow-sm">
+              <Bus className="w-6 h-6 text-white" />
             </div>
-            <span className="ml-3 text-xl font-semibold text-gray-900">Metro Link Admin</span>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Metro NaviGo</h1>
+              <p className="text-xs text-gray-500 font-medium">Admin Portal</p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            className="lg:hidden p-2 rounded-lg text-gray-400 hover:text-gray-600 
+                     hover:bg-gray-100 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
         
-        <nav className="mt-6 px-3">
+        {/* Navigation */}
+        <nav className="flex-1 px-4 py-6 overflow-y-auto">
           <div className="space-y-1">
             {navigation.map((item) => {
               const isActive = location.pathname === item.href;
@@ -66,22 +71,26 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <NavLink
                   key={item.name}
                   to={item.href}
-                    className={`
-                    group flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200
+                  className={`
+                    group flex items-center px-4 py-3 text-sm font-semibold rounded-xl
+                    transition-all duration-200
                     ${isActive 
-                      ? 'bg-primary-50 text-primary-700 border-r-2 border-primary-500' 
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ? 'bg-amber-50 text-amber-700 shadow-sm' 
+                      : 'text-gray-700 hover:bg-gray-50'
                     }
                   `}
                   onClick={onClose}
                 >
                   <item.icon 
                     className={`
-                      mr-3 h-5 w-5 flex-shrink-0
-                      ${isActive ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-500'}
+                      mr-3 h-5 w-5 flex-shrink-0 transition-colors
+                      ${isActive ? 'text-amber-600' : 'text-gray-400 group-hover:text-gray-600'}
                     `} 
                   />
                   {item.name}
+                  {isActive && (
+                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-600"></div>
+                  )}
                 </NavLink>
               );
             })}
@@ -89,9 +98,13 @@ const Sidebar = ({ isOpen, onClose }) => {
         </nav>
         
         {/* Footer */}
-        <div className="absolute bottom-0 w-full p-4 border-t border-gray-200">
-          <div className="text-xs text-gray-500 text-center">
-            Metro Link Tracker Admin v1.0
+        <div className="absolute bottom-0 w-full p-4 border-t border-gray-200 bg-gray-50">
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse-subtle"></div>
+              <span className="text-xs font-semibold text-gray-600">System Online</span>
+            </div>
+            <span className="text-xs text-gray-400 font-medium">v1.0</span>
           </div>
         </div>
       </div>

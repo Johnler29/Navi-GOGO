@@ -3,9 +3,12 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-// Your Supabase credentials
-const supabaseUrl = 'https://bukrffymmsdbpqxmdwbv.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1a3JmZnltbXNkYnBxeG1kd2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQyMDkxNDMsImV4cCI6MjA2OTc4NTE0M30.UpZBCFwo-hygvClBflw8B20rLGtcYPsyMaRGonH9omA';
+// Load environment variables
+require('dotenv').config();
+
+// Your Supabase credentials from environment variables
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL_HERE';
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY_HERE';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

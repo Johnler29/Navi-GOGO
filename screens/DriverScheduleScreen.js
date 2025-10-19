@@ -238,14 +238,14 @@ export default function DriverScheduleScreen({ navigation }) {
       <View style={styles.headerContainer}>
         <View style={styles.headerRow}>
           <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-            <Ionicons name="menu" size={24} color="#374151" />
+            <Ionicons name="menu" size={24} color="#fff" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Work Schedule</Text>
             <Text style={styles.headerSubtitle}>Metro NaviGo Driver</Text>
           </View>
           <TouchableOpacity style={styles.profileButton} onPress={handleProfilePress}>
-            <Ionicons name="person-circle" size={32} color="#374151" />
+            <Ionicons name="person-circle" size={28} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -309,20 +309,20 @@ export default function DriverScheduleScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#f8f9fa',
   },
   headerContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#f59e0b',
     paddingTop: 60,
-    paddingBottom: 24,
+    paddingBottom: 32,
     paddingHorizontal: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 12,
   },
   headerRow: {
     flexDirection: 'row',
@@ -330,28 +330,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   menuButton: {
-    padding: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
   },
   headerTitle: {
-    color: '#1A1A1A',
+    color: '#fff',
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 4,
     fontFamily: 'System',
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   headerSubtitle: {
-    color: '#6B7280',
+    color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     fontFamily: 'System',
   },
   profileButton: {
-    padding: 4,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     flex: 1,
@@ -362,11 +372,12 @@ const styles = StyleSheet.create({
     marginBottom: 25,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 15,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 16,
     fontFamily: 'System',
+    letterSpacing: -0.5,
   },
   daysContainer: {
     flexDirection: 'row',
@@ -374,15 +385,17 @@ const styles = StyleSheet.create({
   },
   dayCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 20,
     padding: 16,
     alignItems: 'center',
     minWidth: 80,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 2,
+    borderColor: '#f0f0f0',
   },
   selectedDayCard: {
     backgroundColor: '#f59e0b',
@@ -429,13 +442,15 @@ const styles = StyleSheet.create({
   },
   shiftCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 24,
+    padding: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: '#f0f0f0',
   },
   cardPressed: {
     transform: [{ scale: 0.98 }],
@@ -493,14 +508,16 @@ const styles = StyleSheet.create({
   },
   noShiftsCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 24,
     padding: 32,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: '#f0f0f0',
   },
   noShiftsText: {
     fontSize: 16,
@@ -525,15 +542,17 @@ const styles = StyleSheet.create({
   summaryCard: {
     flex: 1,
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 20,
     padding: 16,
     alignItems: 'center',
     marginHorizontal: 5,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 2,
+    borderColor: '#f0f0f0',
   },
   summaryValue: {
     fontSize: 20,
@@ -585,9 +604,14 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     backgroundColor: '#f59e0b',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 20,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 10,
   },
   retryButtonText: {
     color: '#fff',

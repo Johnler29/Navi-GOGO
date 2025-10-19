@@ -21,13 +21,12 @@ import {
   Activity
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { notifications } from '../utils/notifications';
 import BusModal from '../components/BusModal';
 
 const FleetManagement = () => {
   const { buses, drivers, routes, createBus, updateBus, deleteBus, updateBusLocation } = useSupabase();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [trackingFilter, setTrackingFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [selectedBus, setSelectedBus] = useState(null);
   const [showActions, setShowActions] = useState(null);
@@ -35,6 +34,8 @@ const FleetManagement = () => {
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
   const [sortBy, setSortBy] = useState('bus_number');
   const [sortOrder, setSortOrder] = useState('asc');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [trackingFilter, setTrackingFilter] = useState('all');
 
   // Enhanced filtering and sorting
   const filteredBuses = buses
@@ -42,8 +43,11 @@ const FleetManagement = () => {
       const matchesSearch = bus.bus_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            bus.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            (bus.route_id && bus.route_id.toString().toLowerCase().includes(searchTerm.toLowerCase()));
+      
       const matchesStatus = statusFilter === 'all' || bus.status === statusFilter;
+      
       const matchesTracking = trackingFilter === 'all' || bus.tracking_status === trackingFilter;
+      
       return matchesSearch && matchesStatus && matchesTracking;
     })
     .sort((a, b) => {
@@ -72,7 +76,7 @@ const FleetManagement = () => {
   const handleCreateBus = async (busData) => {
     try {
       await createBus(busData);
-      toast.success('Bus created successfully!');
+      notifications.busCreated();
       setShowModal(false);
     } catch (error) {
       toast.error('Failed to create bus: ' + error.message);
@@ -82,7 +86,7 @@ const FleetManagement = () => {
   const handleUpdateBus = async (id, updates) => {
     try {
       await updateBus(id, updates);
-      toast.success('Bus updated successfully!');
+      notifications.busUpdated();
       setShowModal(false);
       setSelectedBus(null);
     } catch (error) {
@@ -94,7 +98,7 @@ const FleetManagement = () => {
     if (window.confirm('Are you sure you want to delete this bus?')) {
       try {
         await deleteBus(id);
-        toast.success('Bus deleted successfully!');
+        notifications.busDeleted();
       } catch (error) {
         toast.error('Failed to delete bus: ' + error.message);
       }
@@ -105,7 +109,7 @@ const FleetManagement = () => {
     setRefreshing(true);
     try {
       // The data will be refreshed automatically by the context
-      toast.success('Data refreshed!');
+      notifications.showInfo('Data refreshed!');
     } catch (error) {
       toast.error('Failed to refresh data');
     } finally {
@@ -113,23 +117,6 @@ const FleetManagement = () => {
     }
   };
 
-  const handleStatusChange = async (busId, newStatus) => {
-    try {
-      await updateBus(busId, { status: newStatus });
-      toast.success(`Bus status updated to ${newStatus}`);
-    } catch (error) {
-      toast.error('Failed to update bus status: ' + error.message);
-    }
-  };
-
-  const handleTrackingStatusChange = async (busId, newTrackingStatus) => {
-    try {
-      await updateBus(busId, { tracking_status: newTrackingStatus });
-      toast.success(`Tracking status updated to ${newTrackingStatus}`);
-    } catch (error) {
-      toast.error('Failed to update tracking status: ' + error.message);
-    }
-  };
 
   const handleSort = (column) => {
     if (sortBy === column) {
@@ -140,21 +127,30 @@ const FleetManagement = () => {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'inactive': return 'bg-gray-100 text-gray-800';
-      case 'maintenance': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const getSystemStatus = (bus) => {
+    // System-managed status based on driver assignment and recent activity
+    const hasDriver = bus.driver_id && bus.driver_id !== '';
+    const hasRecentActivity = bus.last_location_update && 
+      new Date(bus.last_location_update) > new Date(Date.now() - 5 * 60 * 1000);
+    
+    if (hasDriver && hasRecentActivity) {
+      return { status: 'On Duty', color: 'bg-green-100 text-green-800' };
+    } else if (hasDriver) {
+      return { status: 'Assigned', color: 'bg-blue-100 text-blue-800' };
+    } else {
+      return { status: 'Available', color: 'bg-gray-100 text-gray-800' };
     }
   };
 
-  const getTrackingStatusColor = (status) => {
-    switch (status) {
-      case 'moving': return 'bg-blue-100 text-blue-800';
-      case 'stopped': return 'bg-orange-100 text-orange-800';
-      case 'at_stop': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const getTrackingStatus = (bus) => {
+    // System-managed tracking status based on recent activity
+    const hasRecentActivity = bus.last_location_update && 
+      new Date(bus.last_location_update) > new Date(Date.now() - 5 * 60 * 1000);
+    
+    if (hasRecentActivity) {
+      return { status: 'Live', color: 'bg-green-100 text-green-800' };
+    } else {
+      return { status: 'Offline', color: 'bg-gray-100 text-gray-800' };
     }
   };
 
@@ -334,9 +330,9 @@ const FleetManagement = () => {
             </span>
           </div>
           <div className="flex items-center space-x-4 text-sm text-blue-700">
-            <span>Active: {buses.filter(b => b.status === 'active').length}</span>
+            <span>On Duty: {buses.filter(b => getSystemStatus(b).status === 'On Duty').length}</span>
             <span>•</span>
-            <span>Moving: {buses.filter(b => b.tracking_status === 'moving').length}</span>
+            <span>Live: {buses.filter(b => getTrackingStatus(b).status === 'Live').length}</span>
             <span>•</span>
             <span>With Location: {buses.filter(b => b.latitude && b.longitude).length}</span>
           </div>
@@ -418,29 +414,15 @@ const FleetManagement = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
-                          <select
-                            value={bus.status}
-                            onChange={(e) => handleStatusChange(bus.id, e.target.value)}
-                            className={`text-xs font-semibold rounded-full px-2 py-1 border-0 ${getStatusColor(bus.status)}`}
-                          >
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                            <option value="maintenance">Maintenance</option>
-                          </select>
+                          <span className={`text-xs font-semibold rounded-full px-2 py-1 ${getSystemStatus(bus).color}`}>
+                            {getSystemStatus(bus).status}
+                          </span>
                         </div>
-                        {bus.tracking_status && (
-                          <div className="flex items-center space-x-2">
-                            <select
-                              value={bus.tracking_status}
-                              onChange={(e) => handleTrackingStatusChange(bus.id, e.target.value)}
-                              className={`text-xs font-semibold rounded-full px-2 py-1 border-0 ${getTrackingStatusColor(bus.tracking_status)}`}
-                            >
-                              <option value="moving">Moving</option>
-                              <option value="stopped">Stopped</option>
-                              <option value="at_stop">At Stop</option>
-                            </select>
-                          </div>
-                        )}
+                        <div className="flex items-center space-x-2">
+                          <span className={`text-xs font-semibold rounded-full px-2 py-1 ${getTrackingStatus(bus).color}`}>
+                            {getTrackingStatus(bus).status}
+                          </span>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -578,31 +560,17 @@ const FleetManagement = () => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Status</span>
-                    <select
-                      value={bus.status}
-                      onChange={(e) => handleStatusChange(bus.id, e.target.value)}
-                      className={`text-xs font-semibold rounded-full px-2 py-1 border-0 ${getStatusColor(bus.status)}`}
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="maintenance">Maintenance</option>
-                    </select>
+                    <span className={`text-xs font-semibold rounded-full px-2 py-1 ${getSystemStatus(bus).color}`}>
+                      {getSystemStatus(bus).status}
+                    </span>
                   </div>
                   
-                  {bus.tracking_status && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Tracking</span>
-                      <select
-                        value={bus.tracking_status}
-                        onChange={(e) => handleTrackingStatusChange(bus.id, e.target.value)}
-                        className={`text-xs font-semibold rounded-full px-2 py-1 border-0 ${getTrackingStatusColor(bus.tracking_status)}`}
-                      >
-                        <option value="moving">Moving</option>
-                        <option value="stopped">Stopped</option>
-                        <option value="at_stop">At Stop</option>
-                      </select>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Tracking</span>
+                    <span className={`text-xs font-semibold rounded-full px-2 py-1 ${getTrackingStatus(bus).color}`}>
+                      {getTrackingStatus(bus).status}
+                    </span>
+                  </div>
                   
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Location</span>

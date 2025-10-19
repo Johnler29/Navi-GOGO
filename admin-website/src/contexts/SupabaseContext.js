@@ -4,8 +4,18 @@ import { createClient } from '@supabase/supabase-js';
 const SupabaseContext = createContext();
 
 // Supabase configuration
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://bukrffymmsdbpqxmdwbv.supabase.co';
-const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1a3JmZnltbXNkYnBxeG1kd2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQyMDkxNDMsImV4cCI6MjA2OTc4NTE0M30.UpZBCFwo-hygvClBflw8B20rLGtcYPsyMaRGonH9omA';
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://your-project-id.supabase.co';
+const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'your_anon_key_here';
+
+// Validate Supabase configuration
+if (supabaseUrl === 'https://your-project-id.supabase.co' || supabaseKey === 'your_anon_key_here') {
+  console.error('⚠️ Supabase configuration missing! Please set up your environment variables:');
+  console.error('1. Create a .env.local file in the admin-website directory');
+  console.error('2. Add your Supabase credentials:');
+  console.error('   REACT_APP_SUPABASE_URL=https://your-project-id.supabase.co');
+  console.error('   REACT_APP_SUPABASE_ANON_KEY=your_anon_key_here');
+  console.error('3. Restart the development server');
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -27,17 +37,26 @@ export const SupabaseProvider = ({ children }) => {
   const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastUpdate, setLastUpdate] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(30000); // 30 seconds
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [showRefreshNotification, setShowRefreshNotification] = useState(false);
 
   // Real-time subscriptions
   useEffect(() => {
     const setupRealtimeSubscriptions = () => {
+      const subscriptions = [];
+
       // Buses subscription
       const busesSubscription = supabase
         .channel('buses_changes')
         .on('postgres_changes', 
           { event: '*', schema: 'public', table: 'buses' },
           (payload) => {
-            console.log('Buses change received:', payload);
+            console.log('🔄 Buses change received:', payload);
+            setLastUpdate(new Date());
             if (payload.eventType === 'INSERT') {
               setBuses(prev => [...prev, payload.new]);
             } else if (payload.eventType === 'UPDATE') {
@@ -50,6 +69,7 @@ export const SupabaseProvider = ({ children }) => {
           }
         )
         .subscribe();
+      subscriptions.push(busesSubscription);
 
       // Routes subscription
       const routesSubscription = supabase
@@ -57,7 +77,8 @@ export const SupabaseProvider = ({ children }) => {
         .on('postgres_changes', 
           { event: '*', schema: 'public', table: 'routes' },
           (payload) => {
-            console.log('Routes change received:', payload);
+            console.log('🔄 Routes change received:', payload);
+            setLastUpdate(new Date());
             if (payload.eventType === 'INSERT') {
               setRoutes(prev => [...prev, payload.new]);
             } else if (payload.eventType === 'UPDATE') {
@@ -70,6 +91,7 @@ export const SupabaseProvider = ({ children }) => {
           }
         )
         .subscribe();
+      subscriptions.push(routesSubscription);
 
       // Drivers subscription
       const driversSubscription = supabase
@@ -77,24 +99,130 @@ export const SupabaseProvider = ({ children }) => {
         .on('postgres_changes', 
           { event: '*', schema: 'public', table: 'drivers' },
           (payload) => {
-            console.log('Drivers change received:', payload);
+            console.log('🔄 Drivers change received:', payload);
+            setLastUpdate(new Date());
             if (payload.eventType === 'INSERT') {
-              setDrivers(prev => [...prev, payload.new]);
+              console.log('✅ Adding new driver to state:', payload.new);
+              setDrivers(prev => {
+                // Check if driver already exists to avoid duplicates
+                const exists = prev.some(driver => driver.id === payload.new.id);
+                if (exists) {
+                  console.log('⚠️ Driver already exists, skipping duplicate');
+                  return prev;
+                }
+                return [...prev, payload.new];
+              });
             } else if (payload.eventType === 'UPDATE') {
+              console.log('✅ Updating driver in state:', payload.new);
               setDrivers(prev => prev.map(driver => 
                 driver.id === payload.new.id ? payload.new : driver
               ));
             } else if (payload.eventType === 'DELETE') {
+              console.log('✅ Removing driver from state:', payload.old);
               setDrivers(prev => prev.filter(driver => driver.id !== payload.old.id));
             }
           }
         )
+        .subscribe((status) => {
+          console.log('🔄 Drivers subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Drivers real-time subscription active');
+          }
+        });
+      subscriptions.push(driversSubscription);
+
+      // Schedules subscription
+      const schedulesSubscription = supabase
+        .channel('schedules_changes')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'schedules' },
+          (payload) => {
+            console.log('🔄 Schedules change received:', payload);
+            setLastUpdate(new Date());
+            if (payload.eventType === 'INSERT') {
+              setSchedules(prev => [...prev, payload.new]);
+            } else if (payload.eventType === 'UPDATE') {
+              setSchedules(prev => prev.map(schedule => 
+                schedule.id === payload.new.id ? payload.new : schedule
+              ));
+            } else if (payload.eventType === 'DELETE') {
+              setSchedules(prev => prev.filter(schedule => schedule.id !== payload.old.id));
+            }
+          }
+        )
         .subscribe();
+      subscriptions.push(schedulesSubscription);
+
+      // Stops subscription
+      const stopsSubscription = supabase
+        .channel('stops_changes')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'stops' },
+          (payload) => {
+            console.log('🔄 Stops change received:', payload);
+            setLastUpdate(new Date());
+            if (payload.eventType === 'INSERT') {
+              setStops(prev => [...prev, payload.new]);
+            } else if (payload.eventType === 'UPDATE') {
+              setStops(prev => prev.map(stop => 
+                stop.id === payload.new.id ? payload.new : stop
+              ));
+            } else if (payload.eventType === 'DELETE') {
+              setStops(prev => prev.filter(stop => stop.id !== payload.old.id));
+            }
+          }
+        )
+        .subscribe();
+      subscriptions.push(stopsSubscription);
+
+      // Users subscription
+      const usersSubscription = supabase
+        .channel('users_changes')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'users' },
+          (payload) => {
+            console.log('🔄 Users change received:', payload);
+            setLastUpdate(new Date());
+            if (payload.eventType === 'INSERT') {
+              setUsers(prev => [...prev, payload.new]);
+            } else if (payload.eventType === 'UPDATE') {
+              setUsers(prev => prev.map(user => 
+                user.id === payload.new.id ? payload.new : user
+              ));
+            } else if (payload.eventType === 'DELETE') {
+              setUsers(prev => prev.filter(user => user.id !== payload.old.id));
+            }
+          }
+        )
+        .subscribe();
+      subscriptions.push(usersSubscription);
+
+      // Feedback subscription
+      const feedbackSubscription = supabase
+        .channel('feedback_changes')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'feedback' },
+          (payload) => {
+            console.log('🔄 Feedback change received:', payload);
+            setLastUpdate(new Date());
+            if (payload.eventType === 'INSERT') {
+              setFeedback(prev => [...prev, payload.new]);
+            } else if (payload.eventType === 'UPDATE') {
+              setFeedback(prev => prev.map(feedback => 
+                feedback.id === payload.new.id ? payload.new : feedback
+              ));
+            } else if (payload.eventType === 'DELETE') {
+              setFeedback(prev => prev.filter(feedback => feedback.id !== payload.old.id));
+            }
+          }
+        )
+        .subscribe();
+      subscriptions.push(feedbackSubscription);
 
       return () => {
-        supabase.removeChannel(busesSubscription);
-        supabase.removeChannel(routesSubscription);
-        supabase.removeChannel(driversSubscription);
+        subscriptions.forEach(subscription => {
+          supabase.removeChannel(subscription);
+        });
       };
     };
 
@@ -145,6 +273,55 @@ export const SupabaseProvider = ({ children }) => {
 
     loadData();
   }, []);
+
+  // Auto-refresh mechanism
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(async () => {
+      try {
+        setIsRefreshing(true);
+        setRefreshCount(prev => prev + 1);
+        
+        // Load all data in parallel
+        const [busesResult, routesResult, driversResult, schedulesResult, stopsResult, usersResult, feedbackResult] = await Promise.all([
+          supabase.from('buses').select('*').order('created_at', { ascending: false }),
+          supabase.from('routes').select('*').order('created_at', { ascending: false }),
+          supabase.from('drivers').select('*').order('created_at', { ascending: false }),
+          supabase.from('schedules').select('*').order('created_at', { ascending: false }),
+          supabase.from('stops').select('*').order('created_at', { ascending: false }),
+          supabase.from('users').select('*').order('created_at', { ascending: false }),
+          supabase.from('feedback').select('*').order('created_at', { ascending: false })
+        ]);
+
+        // Only update if there are no errors
+        if (!busesResult.error && !routesResult.error && !driversResult.error && 
+            !schedulesResult.error && !stopsResult.error && !usersResult.error && !feedbackResult.error) {
+          
+          setBuses(busesResult.data || []);
+          setRoutes(routesResult.data || []);
+          setDrivers(driversResult.data || []);
+          setSchedules(schedulesResult.data || []);
+          setStops(stopsResult.data || []);
+          setUsers(usersResult.data || []);
+          setFeedback(feedbackResult.data || []);
+          setLastUpdate(new Date());
+          
+          // Show refresh notification
+          setShowRefreshNotification(true);
+          setTimeout(() => setShowRefreshNotification(false), 3000);
+          
+          console.log('🔄 Auto-refresh completed at', new Date().toLocaleTimeString());
+        }
+      } catch (error) {
+        console.error('Auto-refresh error:', error);
+      } finally {
+        setIsRefreshing(false);
+      }
+    }, refreshInterval);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, supabase]);
 
   // CRUD operations
   const createBus = async (busData) => {
@@ -279,6 +456,8 @@ export const SupabaseProvider = ({ children }) => {
   // Create driver account with authentication
   const createDriverAccount = async (driverData) => {
     try {
+      let newDriver = null;
+      
       // First try the RPC function
       const { data, error } = await supabase.rpc('create_driver_account', {
         p_first_name: driverData.firstName,
@@ -291,18 +470,30 @@ export const SupabaseProvider = ({ children }) => {
       });
 
       if (error) throw error;
-      return data;
+      
+      // If RPC succeeded, fetch the created driver
+      if (data && data.driver_id) {
+        const { data: driverData, error: fetchError } = await supabase
+          .from('drivers')
+          .select('*')
+          .eq('id', data.driver_id)
+          .single();
+        
+        if (!fetchError && driverData) {
+          newDriver = driverData;
+        }
+      }
+      
+      return { success: true, driver: newDriver, ...data };
     } catch (rpcError) {
       // If RPC function fails, try direct insertion
       console.log('RPC function failed, trying direct insertion:', rpcError.message);
       
-      const fullName = `${driverData.firstName} ${driverData.lastName}`;
       const hashedPassword = await hashPassword(driverData.password);
       
       const { data, error } = await supabase
         .from('drivers')
         .insert([{
-          name: fullName,
           first_name: driverData.firstName,
           last_name: driverData.lastName,
           email: driverData.email,
@@ -315,8 +506,15 @@ export const SupabaseProvider = ({ children }) => {
 
       if (error) throw error;
       
+      // Immediately update local state
+      if (data && data[0]) {
+        setDrivers(prev => [...prev, data[0]]);
+        console.log('✅ Driver immediately added to local state:', data[0]);
+      }
+      
       return {
         success: true,
+        driver: data[0],
         driver_id: data[0].id,
         message: 'Driver account created successfully'
       };
@@ -374,14 +572,54 @@ export const SupabaseProvider = ({ children }) => {
     return data[0];
   };
 
-  // Delete driver
+  // Delete driver account with proper foreign key handling
   const deleteDriverAccount = async (driverId) => {
-    const { error } = await supabase
-      .from('drivers')
-      .delete()
-      .eq('id', driverId);
-    
-    if (error) throw error;
+    try {
+      // First, check if driver has any assigned buses
+      const { data: assignedBuses, error: busesError } = await supabase
+        .from('buses')
+        .select('id, bus_number, name')
+        .eq('driver_id', driverId);
+      
+      if (busesError) throw busesError;
+      
+      // If driver has assigned buses, unassign them first
+      if (assignedBuses && assignedBuses.length > 0) {
+        const { error: unassignError } = await supabase
+          .from('buses')
+          .update({ driver_id: null })
+          .eq('driver_id', driverId);
+        
+        if (unassignError) throw unassignError;
+      }
+      
+      // Delete any driver assignments
+      const { error: assignmentsError } = await supabase
+        .from('driver_assignments')
+        .delete()
+        .eq('driver_id', driverId);
+      
+      if (assignmentsError) throw assignmentsError;
+      
+      // Now delete the driver
+      const { error: deleteError } = await supabase
+        .from('drivers')
+        .delete()
+        .eq('id', driverId);
+      
+      if (deleteError) throw deleteError;
+      
+      return { 
+        success: true, 
+        unassignedBuses: assignedBuses?.length || 0,
+        message: assignedBuses?.length > 0 
+          ? `Driver deleted successfully. ${assignedBuses.length} bus(es) have been unassigned.`
+          : 'Driver deleted successfully.'
+      };
+    } catch (error) {
+      console.error('Error deleting driver:', error);
+      throw error;
+    }
   };
 
   const updateDriver = async (id, updates) => {
@@ -396,12 +634,52 @@ export const SupabaseProvider = ({ children }) => {
   };
 
   const deleteDriver = async (id) => {
-    const { error } = await supabase
-      .from('drivers')
-      .delete()
-      .eq('id', id);
-    
-    if (error) throw error;
+    try {
+      // First, check if driver has any assigned buses
+      const { data: assignedBuses, error: busesError } = await supabase
+        .from('buses')
+        .select('id, bus_number, name')
+        .eq('driver_id', id);
+      
+      if (busesError) throw busesError;
+      
+      // If driver has assigned buses, unassign them first
+      if (assignedBuses && assignedBuses.length > 0) {
+        const { error: unassignError } = await supabase
+          .from('buses')
+          .update({ driver_id: null })
+          .eq('driver_id', id);
+        
+        if (unassignError) throw unassignError;
+      }
+      
+      // Delete any driver assignments
+      const { error: assignmentsError } = await supabase
+        .from('driver_assignments')
+        .delete()
+        .eq('driver_id', id);
+      
+      if (assignmentsError) throw assignmentsError;
+      
+      // Now delete the driver
+      const { error: deleteError } = await supabase
+        .from('drivers')
+        .delete()
+        .eq('id', id);
+      
+      if (deleteError) throw deleteError;
+      
+      return { 
+        success: true, 
+        unassignedBuses: assignedBuses?.length || 0,
+        message: assignedBuses?.length > 0 
+          ? `Driver deleted successfully. ${assignedBuses.length} bus(es) have been unassigned.`
+          : 'Driver deleted successfully.'
+      };
+    } catch (error) {
+      console.error('Error deleting driver:', error);
+      throw error;
+    }
   };
 
   const updateBusLocation = async (busId, locationData) => {
@@ -546,6 +824,63 @@ export const SupabaseProvider = ({ children }) => {
     }
   };
 
+  // Manual refresh function
+  const refreshData = async () => {
+    try {
+      setIsRefreshing(true);
+      setRefreshCount(prev => prev + 1);
+      
+      // Load all data in parallel
+      const [busesResult, routesResult, driversResult, schedulesResult, stopsResult, usersResult, feedbackResult] = await Promise.all([
+        supabase.from('buses').select('*').order('created_at', { ascending: false }),
+        supabase.from('routes').select('*').order('created_at', { ascending: false }),
+        supabase.from('drivers').select('*').order('created_at', { ascending: false }),
+        supabase.from('schedules').select('*').order('created_at', { ascending: false }),
+        supabase.from('stops').select('*').order('created_at', { ascending: false }),
+        supabase.from('users').select('*').order('created_at', { ascending: false }),
+        supabase.from('feedback').select('*').order('created_at', { ascending: false })
+      ]);
+
+      if (busesResult.error) throw busesResult.error;
+      if (routesResult.error) throw routesResult.error;
+      if (driversResult.error) throw driversResult.error;
+      if (schedulesResult.error) throw schedulesResult.error;
+      if (stopsResult.error) throw stopsResult.error;
+      if (usersResult.error) throw usersResult.error;
+      if (feedbackResult.error) throw feedbackResult.error;
+
+      setBuses(busesResult.data || []);
+      setRoutes(routesResult.data || []);
+      setDrivers(driversResult.data || []);
+      setSchedules(schedulesResult.data || []);
+      setStops(stopsResult.data || []);
+      setUsers(usersResult.data || []);
+      setFeedback(feedbackResult.data || []);
+      setLastUpdate(new Date());
+      
+      // Show refresh notification
+      setShowRefreshNotification(true);
+      setTimeout(() => setShowRefreshNotification(false), 3000);
+      
+      console.log('🔄 Manual refresh completed at', new Date().toLocaleTimeString());
+    } catch (error) {
+      console.error('Manual refresh error:', error);
+      setError(error.message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Toggle auto-refresh
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(prev => !prev);
+  };
+
+  // Update refresh interval
+  const updateRefreshInterval = (newInterval) => {
+    setRefreshInterval(newInterval);
+  };
+
   const value = {
     supabase,
     buses,
@@ -557,6 +892,15 @@ export const SupabaseProvider = ({ children }) => {
     feedback,
     loading,
     error,
+    lastUpdate,
+    isRefreshing,
+    autoRefresh,
+    refreshInterval,
+    refreshCount,
+    showRefreshNotification,
+    refreshData,
+    toggleAutoRefresh,
+    updateRefreshInterval,
     createBus,
     updateBus,
     deleteBus,

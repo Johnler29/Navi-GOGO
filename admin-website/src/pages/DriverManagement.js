@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { Users, Search, UserCheck, Trash2, Bus, MapPin } from 'lucide-react';
+import { notifications } from '../utils/notifications';
 
 // Cache busting comment - Driver Management v2.0 (Add Driver removed)
 
@@ -90,10 +91,10 @@ const DriverManagement = () => {
       setAssignments([...assignments, ...data]);
       setAssignmentForm({ driver_id: '', bus_id: '' });
       setShowAssignDriver(false);
-      window.alert('Driver assigned successfully!');
+      notifications.driverAssigned();
     } catch (error) {
       console.error('Error assigning driver:', error);
-      window.alert('Error assigning driver: ' + error.message);
+      notifications.showError('Error assigning driver: ' + error.message);
     }
   };
 
@@ -109,10 +110,10 @@ const DriverManagement = () => {
       if (error) throw error;
       
       setAssignments(assignments.filter(a => a.id !== assignmentId));
-      window.alert('Assignment removed successfully!');
+      notifications.driverUnassigned();
     } catch (error) {
       console.error('Error removing assignment:', error);
-      window.alert('Error removing assignment: ' + error.message);
+      notifications.showError('Error removing assignment: ' + error.message);
     }
   };
 

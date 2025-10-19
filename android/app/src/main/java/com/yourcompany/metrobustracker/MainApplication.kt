@@ -32,7 +32,7 @@ class MainApplication : Application(), ReactApplication {
 
           override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
 
-          override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+          override val isNewArchEnabled: Boolean = false
           override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
       }
   )
@@ -43,10 +43,11 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     SoLoader.init(this, OpenSourceMergedSoMapping)
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // If you opted-in for the New Architecture, we load the native entry point for this app.
-      load()
-    }
+    // New Architecture is disabled for compatibility
+    // if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+    //   // If you opted-in for the New Architecture, we load the native entry point for this app.
+    //   load()
+    // }
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
   }
 

@@ -51,38 +51,59 @@ const RecentActivity = () => {
   ].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 8);
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-      <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">Recent Activity</h2>
+    <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden h-full
+                    hover:shadow-2xl transition-shadow duration-300">
+      <div className="px-8 py-6 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
+        <h2 className="text-xl font-bold text-gray-900 flex items-center">
+          <div className="p-2 bg-primary-100 rounded-xl mr-3">
+            <AlertCircle className="w-5 h-5 text-primary-600" />
+          </div>
+          Recent Activity
+        </h2>
       </div>
-      <div className="p-6">
-        <div className="space-y-4">
+      <div className="p-6 max-h-[600px] overflow-y-auto">
+        <div className="space-y-3">
           {activities.length > 0 ? (
             activities.map((activity) => {
               const Icon = activity.icon;
               return (
-                <div key={activity.id} className="flex items-start space-x-3">
-                  <div className={`p-2 rounded-lg ${activity.bgColor}`}>
-                    <Icon className={`w-4 h-4 ${activity.color}`} />
+                <div key={activity.id} 
+                     className="group flex items-start space-x-4 p-4 rounded-2xl 
+                              hover:bg-gray-50 transition-all duration-300 cursor-pointer
+                              border border-transparent hover:border-gray-200 hover:shadow-md">
+                  <div className={`p-3 rounded-2xl ${activity.bgColor} 
+                                 group-hover:scale-110 transition-transform duration-300
+                                 shadow-lg`}>
+                    <Icon className={`w-5 h-5 ${activity.color}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-semibold text-gray-900 mb-1">
                       {activity.title}
                     </p>
-                    <p className="text-sm text-gray-500 truncate">
+                    <p className="text-xs text-gray-600 truncate mb-2">
                       {activity.description}
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-gray-400 font-medium">
                       {formatDistanceToNow(new Date(activity.time), { addSuffix: true })}
                     </p>
+                  </div>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <div className="w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center">
+                      <svg className="w-3 h-3 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
                   </div>
                 </div>
               );
             })
           ) : (
-            <div className="text-center py-8">
-              <AlertCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No recent activity</p>
+            <div className="text-center py-12">
+              <div className="bg-gray-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="text-sm font-semibold text-gray-500">No recent activity</p>
+              <p className="text-xs text-gray-400 mt-1">Activity will appear here as it happens</p>
             </div>
           )}
         </div>

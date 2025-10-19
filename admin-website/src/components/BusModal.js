@@ -6,17 +6,16 @@ const BusModal = ({ bus, routes, drivers, onClose, onSave }) => {
     bus_number: '',
     name: '',
     capacity: 50,
-    status: 'active',
     route_id: '',
     driver_id: '',
     latitude: '',
     longitude: '',
     speed: 0,
-    heading: 0,
-    tracking_status: 'moving'
+    heading: 0
   });
 
   const [errors, setErrors] = useState({});
+  const [manualOverride, setManualOverride] = useState(false);
 
   useEffect(() => {
     if (bus) {
@@ -24,14 +23,12 @@ const BusModal = ({ bus, routes, drivers, onClose, onSave }) => {
         bus_number: bus.bus_number || '',
         name: bus.name || '',
         capacity: bus.capacity || 50,
-        status: bus.status || 'active',
         route_id: bus.route_id || '',
         driver_id: bus.driver_id || '',
         latitude: bus.latitude || '',
         longitude: bus.longitude || '',
         speed: bus.speed || 0,
-        heading: bus.heading || 0,
-        tracking_status: bus.tracking_status || 'moving'
+        heading: bus.heading || 0
       });
     }
   }, [bus]);
@@ -89,13 +86,25 @@ const BusModal = ({ bus, routes, drivers, onClose, onSave }) => {
     const submitData = {
       ...formData,
       capacity: parseInt(formData.capacity),
-      latitude: formData.latitude ? parseFloat(formData.latitude) : null,
-      longitude: formData.longitude ? parseFloat(formData.longitude) : null,
-      speed: parseFloat(formData.speed),
-      heading: parseInt(formData.heading),
       route_id: formData.route_id || null,
-      driver_id: formData.driver_id || null
+      driver_id: formData.driver_id || null,
+      // Automatically set status and tracking_status based on driver assignment
+      status: formData.driver_id ? 'active' : 'inactive',
+      tracking_status: formData.driver_id ? 'stopped' : 'stopped'
     };
+
+    // Only include location fields when manual override is enabled
+    if (manualOverride) {
+      submitData.latitude = formData.latitude ? parseFloat(formData.latitude) : null;
+      submitData.longitude = formData.longitude ? parseFloat(formData.longitude) : null;
+      submitData.speed = formData.speed !== '' ? parseFloat(formData.speed) : 0;
+      submitData.heading = formData.heading !== '' ? parseInt(formData.heading) : 0;
+    } else {
+      delete submitData.latitude;
+      delete submitData.longitude;
+      delete submitData.speed;
+      delete submitData.heading;
+    }
     
     if (bus) {
       onSave(bus.id, submitData);
@@ -186,22 +195,6 @@ const BusModal = ({ bus, routes, drivers, onClose, onSave }) => {
               )}
             </div>
 
-            {/* Status */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Status
-              </label>
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="maintenance">Maintenance</option>
-              </select>
-            </div>
 
             {/* Route */}
             <div>
@@ -248,10 +241,22 @@ const BusModal = ({ bus, routes, drivers, onClose, onSave }) => {
 
           {/* Location Section */}
           <div className="border-t border-gray-200 pt-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-              <MapPin className="w-5 h-5 mr-2 text-primary-500" />
-              Location Information
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <MapPin className="w-5 h-5 mr-2 text-primary-500" />
+                Location Information
+              </h3>
+              <label className="flex items-center space-x-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={manualOverride}
+                  onChange={(e) => setManualOverride(e.target.checked)}
+                  className="h-4 w-4 text-primary-600 border-gray-300 rounded"
+                />
+                <span>Manual override</span>
+              </label>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">By default, live driver GPS updates the bus location. Enable manual override only for testing or corrections.</p>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -264,6 +269,7 @@ const BusModal = ({ bus, routes, drivers, onClose, onSave }) => {
                   value={formData.latitude}
                   onChange={handleChange}
                   step="any"
+                  disabled={!manualOverride}
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
                     errors.latitude ? 'border-red-300' : 'border-gray-300'
                   }`}
@@ -284,6 +290,7 @@ const BusModal = ({ bus, routes, drivers, onClose, onSave }) => {
                   value={formData.longitude}
                   onChange={handleChange}
                   step="any"
+                  disabled={!manualOverride}
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
                     errors.longitude ? 'border-red-300' : 'border-gray-300'
                   }`}
@@ -305,6 +312,7 @@ const BusModal = ({ bus, routes, drivers, onClose, onSave }) => {
                   onChange={handleChange}
                   min="0"
                   step="0.1"
+                  disabled={!manualOverride}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
               </div>
@@ -320,25 +328,11 @@ const BusModal = ({ bus, routes, drivers, onClose, onSave }) => {
                   onChange={handleChange}
                   min="0"
                   max="360"
+                  disabled={!manualOverride}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tracking Status
-                </label>
-                <select
-                  name="tracking_status"
-                  value={formData.tracking_status}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                >
-                  <option value="moving">Moving</option>
-                  <option value="stopped">Stopped</option>
-                  <option value="at_stop">At Stop</option>
-                </select>
-              </div>
             </div>
           </div>
 

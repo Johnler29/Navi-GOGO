@@ -93,7 +93,7 @@ export default function LoginScreen() {
       <View style={styles.content}>
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Ionicons name="bus" size={48} color="#F59E0B" />
+            <Ionicons name="bus" size={52} color="#fff" />
           </View>
           <Text style={styles.title}>Metro NaviGo</Text>
           <Text style={styles.subtitle}>Sign in to track buses and send pings</Text>
@@ -160,16 +160,6 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.demoSection}>
-          <View style={styles.demoCard}>
-            <View style={styles.demoHeader}>
-              <Ionicons name="information-circle" size={16} color="#F59E0B" />
-              <Text style={styles.demoTitle}>Demo Credentials</Text>
-            </View>
-            <Text style={styles.demoText}>Email: user@example.com</Text>
-            <Text style={styles.demoText}>Password: password123</Text>
-          </View>
-        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -178,7 +168,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#f8f9fa',
   },
   content: {
     flex: 1,
@@ -190,32 +180,32 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FEF3C7',
+    width: 100,
+    height: 100,
+    borderRadius: 32,
+    backgroundColor: '#f59e0b',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    marginBottom: 32,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 30,
+    elevation: 12,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 8,
-    letterSpacing: -0.5,
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 12,
+    letterSpacing: -1,
     fontFamily: 'System',
   },
   subtitle: {
-    fontSize: 18,
-    color: '#6B7280',
+    fontSize: 16,
+    color: '#666',
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: '600',
     fontFamily: 'System',
   },
   form: {
@@ -224,18 +214,18 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderRadius: 24,
     marginBottom: 20,
-    paddingHorizontal: 20,
-    height: 56,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    paddingHorizontal: 24,
+    height: 64,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
   inputIcon: {
     marginRight: 16,
@@ -255,65 +245,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    height: 56,
+    borderRadius: 24,
+    marginBottom: 16,
+    height: 64,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
   loginButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#f59e0b',
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 12,
   },
   signupButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
   },
   buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 8,
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '800',
+    marginLeft: 10,
     fontFamily: 'System',
+    letterSpacing: -0.3,
   },
   signupButtonText: {
-    color: '#F59E0B',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
+    color: '#f59e0b',
+    fontSize: 17,
+    fontWeight: '700',
+    marginLeft: 10,
     fontFamily: 'System',
-  },
-  demoSection: {
-    alignItems: 'center',
-  },
-  demoCard: {
-    backgroundColor: '#FFFBEB',
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    width: '100%',
-  },
-  demoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  demoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#F59E0B',
-    marginLeft: 8,
-    fontFamily: 'System',
-  },
-  demoText: {
-    fontSize: 14,
-    color: '#374151',
-    marginBottom: 4,
-    fontWeight: '500',
-    fontFamily: 'System',
+    letterSpacing: -0.3,
   },
 });

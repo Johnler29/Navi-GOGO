@@ -18,7 +18,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.yourcompany.metrobustracker",
       "config": {
-        "googleMapsApiKey": "AIzaSyAtz31ET-f9agUbnJuR-tR35Gk8GdsTRic"
+        "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
       }
     },
     "android": {
@@ -38,7 +38,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyAtz31ET-f9agUbnJuR-tR35Gk8GdsTRic"
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
         }
       }
     },
@@ -55,7 +55,7 @@
       "expo-font"
     ],
     "extra": {
-      "GOOGLE_MAPS_API_KEY": "AIzaSyAtz31ET-f9agUbnJuR-tR35Gk8GdsTRic",
+      "GOOGLE_MAPS_API_KEY": "YOUR_GOOGLE_MAPS_API_KEY_HERE",
       "eas": {
         "projectId": "98656936-607c-4250-9f54-f55cd56958e8"
       }

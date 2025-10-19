@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,16 @@ import {
   Pressable,
   ActivityIndicator,
   Modal,
+  Vibration,
 } from 'react-native';
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useDrawer } from '../contexts/DrawerContext';
 import CapacityStatusModal from '../components/CapacityStatusModal';
+import AlarmModal from '../components/AlarmModal';
+import { supabase, supabaseHelpers } from '../lib/supabase';
 
 const { width } = Dimensions.get('window');
 
@@ -39,6 +43,10 @@ export default function DriverHomeScreen({ navigation }) {
   const [currentCapacity, setCurrentCapacity] = useState(0);
   const [currentBus, setCurrentBus] = useState(null);
   const [currentDriver, setCurrentDriver] = useState(null);
+  const [pingNotifications, setPingNotifications] = useState([]);
+  const [showPingModal, setShowPingModal] = useState(false);
+  const [unreadPingCount, setUnreadPingCount] = useState(0);
+  const [showAlarmModal, setShowAlarmModal] = useState(false);
 
   // Get data from Supabase context
   const { 
@@ -61,7 +69,8 @@ export default function DriverHomeScreen({ navigation }) {
     updateBusCapacityStatus,
     getBusCapacityStatus,
     startDriverSession,
-    endDriverSession
+    endDriverSession,
+    updateBusLocation
   } = useSupabase();
 
   // Get drawer context
@@ -71,39 +80,237 @@ export default function DriverHomeScreen({ navigation }) {
   useEffect(() => {
     const loadCurrentDriver = async () => {
       try {
+        console.log('🔍 Loading current driver...');
         const driverSession = await AsyncStorage.getItem('driverSession');
+        console.log('📱 Driver session from storage:', driverSession ? 'Found' : 'Not found');
+        
         if (driverSession) {
           const session = JSON.parse(driverSession);
+          console.log('👤 Session data:', session);
+          console.log('🔍 Available drivers:', drivers.length);
+          
           const driver = drivers.find(d => d.id === session.driver_id);
           if (driver) {
             setCurrentDriver(driver);
-            console.log('✅ Current driver loaded:', driver);
+            console.log('✅ Current driver loaded:', driver.name, driver.id);
             
             // Find assigned bus for this driver using driver-bus assignments
-            const assignment = driverBusAssignments.find(assignment => assignment.driver_id === driver.id);
+            console.log('🔍 Available assignments:', driverBusAssignments.length);
+            const assignment = driverBusAssignments.find(assignment => assignment.drivers?.id === driver.id);
+            
             if (assignment) {
-              // Find the bus details from the buses array
-              const assignedBus = buses.find(bus => bus.id === assignment.bus_id);
-              if (assignedBus) {
-                setCurrentBus(assignedBus);
-                console.log('✅ Assigned bus found:', assignedBus);
+              console.log('✅ Assignment found:', assignment);
+              // Use the bus data from the assignment (which includes nested route info)
+              if (assignment.buses) {
+                setCurrentBus(assignment.buses);
+                console.log('✅ Assigned bus found:', assignment.buses.bus_number, assignment.buses.id);
               } else {
-                console.log('❌ Bus not found for assignment:', assignment.bus_id);
+                console.log('❌ Bus data not found in assignment');
+                // Try to find any available bus as fallback
+                const availableBus = buses.find(bus => bus.status === 'in_service' && bus.tracking_status === 'active');
+                if (availableBus) {
+                  setCurrentBus(availableBus);
+                  console.log('🔄 Using fallback bus:', availableBus.bus_number);
+                }
               }
             } else {
               console.log('❌ No bus assignment found for driver:', driver.id);
+              // Try to find any available bus as fallback
+              const availableBus = buses.find(bus => bus.status === 'in_service' && bus.tracking_status === 'active');
+              if (availableBus) {
+                setCurrentBus(availableBus);
+                console.log('🔄 Using fallback bus:', availableBus.bus_number);
+              }
             }
+          } else {
+            console.log('❌ Driver not found in drivers list. Looking for:', session.driver_id);
+            console.log('Available driver IDs:', drivers.map(d => d.id));
           }
+        } else {
+          console.log('❌ No driver session found');
         }
       } catch (error) {
-        console.error('Error loading current driver:', error);
+        console.error('❌ Error loading current driver:', error);
       }
     };
 
+    // Only load when we have the necessary data
     if (drivers.length > 0 && driverBusAssignments.length > 0) {
       loadCurrentDriver();
     }
   }, [drivers, buses, driverBusAssignments, routes]);
+
+  // Location watcher ref and helpers
+  const locationWatchRef = useRef(null);
+
+  const stopLocationUpdates = async () => {
+    try {
+      if (locationWatchRef.current && locationWatchRef.current.remove) {
+        await locationWatchRef.current.remove();
+      }
+    } catch (_) {}
+    locationWatchRef.current = null;
+  };
+
+  const startLocationUpdates = async (busId) => {
+    try {
+      console.log('🚀 Starting location updates for bus:', busId);
+      
+      // Ensure services enabled
+      const services = await Location.hasServicesEnabledAsync();
+      if (!services) {
+        console.log('❌ Location services not enabled');
+        return;
+      }
+
+      // Request permission
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('❌ Location permission not granted');
+        return;
+      }
+
+      console.log('✅ Location services ready, starting watcher...');
+
+      // Start high accuracy watcher
+      locationWatchRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Highest,
+          timeInterval: 1000,    // Update every 1 second (was 2000)
+          distanceInterval: 1,   // Update on 1 meter change (was 2)
+          mayShowUserSettingsDialog: true,
+        },
+        async (pos) => {
+          const { latitude, longitude, accuracy, speed } = pos.coords || {};
+          console.log('📍 Location update received:', { latitude, longitude, accuracy, speed });
+          
+          if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+            console.log('⚠️ Invalid coordinates, skipping update');
+            return;
+          }
+          
+          try {
+            console.log('📤 Sending location update to server...');
+            const result = await updateBusLocation({
+              busId,
+              latitude,
+              longitude,
+              accuracy: typeof accuracy === 'number' ? accuracy : 10,
+              speed: typeof speed === 'number' ? (speed * 3.6) : null, // m/s -> km/h
+            });
+            
+            console.log('✅ Location update result:', result);
+            setCurrentLocation({ latitude, longitude });
+          } catch (e) {
+            // Log and continue without interrupting the watcher
+            console.error('❌ Bus location update failed:', e?.message || e);
+          }
+        }
+      );
+      
+      console.log('✅ Location watcher started successfully');
+    } catch (e) {
+      console.error('❌ Failed to start location updates:', e?.message || e);
+    }
+  };
+
+  // Start/stop location updates based on duty status and assigned bus
+  useEffect(() => {
+    console.log('🔄 Duty status changed:', { isOnDuty, currentBus: currentBus?.id });
+    
+    if (isOnDuty && currentBus?.id) {
+      console.log('✅ Starting location updates for bus:', currentBus.id);
+      startLocationUpdates(currentBus.id);
+    } else {
+      console.log('🛑 Stopping location updates');
+      stopLocationUpdates();
+    }
+    return () => { stopLocationUpdates(); };
+  }, [isOnDuty, currentBus?.id]);
+
+  // Load and subscribe to ping notifications
+  useEffect(() => {
+    if (!currentBus?.id) return;
+
+    // Initial load
+    loadPingNotifications();
+
+    // Subscribe to real-time updates
+    const channel = supabase
+      .channel('ping-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ping_notifications',
+          filter: `bus_id=eq.${currentBus.id}`
+        },
+        (payload) => {
+          console.log('Ping notification change:', payload);
+          loadPingNotifications();
+          
+          // Vibrate and alert on new ping
+          if (payload.eventType === 'INSERT') {
+            Vibration.vibrate([0, 200, 100, 200]);
+            Alert.alert(
+              '🔔 New Ping!',
+              'You have received a new passenger notification',
+              [
+                { text: 'View', onPress: () => setShowPingModal(true) },
+                { text: 'Later', style: 'cancel' }
+              ]
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentBus?.id]);
+
+  const loadPingNotifications = async () => {
+    if (!currentBus?.id) return;
+
+    try {
+      const result = await supabaseHelpers.getBusPingNotifications(currentBus.id);
+      if (result.success && result.data) {
+        setPingNotifications(result.data);
+        const unreadCount = result.data.filter(p => p.status === 'pending').length;
+        setUnreadPingCount(unreadCount);
+      }
+    } catch (error) {
+      console.error('Error loading ping notifications:', error);
+    }
+  };
+
+  const handleAcknowledgePing = async (pingId) => {
+    try {
+      const result = await supabaseHelpers.acknowledgePing(pingId);
+      if (result.success) {
+        loadPingNotifications();
+        Alert.alert('Success', 'Ping acknowledged!');
+      }
+    } catch (error) {
+      console.error('Error acknowledging ping:', error);
+      Alert.alert('Error', 'Failed to acknowledge ping');
+    }
+  };
+
+  const handleCompletePing = async (pingId) => {
+    try {
+      const result = await supabaseHelpers.completePing(pingId);
+      if (result.success) {
+        loadPingNotifications();
+        Alert.alert('Success', 'Ping completed!');
+      }
+    } catch (error) {
+      console.error('Error completing ping:', error);
+      Alert.alert('Error', 'Failed to complete ping');
+    }
+  };
 
   // Calculate driver stats from real data
   const calculateDriverStats = () => {
@@ -185,6 +392,12 @@ export default function DriverHomeScreen({ navigation }) {
       action: 'endTrip',
     },
     {
+      title: 'Send Alarm',
+      icon: 'warning',
+      color: '#EF4444',
+      action: 'alarm',
+    },
+    {
       title: 'Passengers',
       icon: 'people',
       color: '#2196F3',
@@ -258,13 +471,18 @@ export default function DriverHomeScreen({ navigation }) {
             // Store session in AsyncStorage
             await AsyncStorage.setItem('driverSession', JSON.stringify(driverSession));
             
-            setCurrentTrip({
+            const tripData = {
               route: `Route ${routes.find(r => r.id === currentBus.route_id)?.route_number || 'Unknown'}`,
               startTime: new Date().toLocaleTimeString(),
               passengers: 0,
               busId: currentBus.id,
               scheduleId: tripResult?.id || schedules.find(s => s.bus_id === currentBus.id && s.status === 'scheduled')?.id
-            });
+            };
+            
+            setCurrentTrip(tripData);
+            
+            // Store trip data in AsyncStorage for other screens to access
+            await AsyncStorage.setItem('currentTrip', JSON.stringify(tripData));
             
             Alert.alert('Trip Started', 'Your trip has been started successfully.');
           } catch (error) {
@@ -293,8 +511,9 @@ export default function DriverHomeScreen({ navigation }) {
               await endDriverSession(session.id);
             }
             
-            // Clear driver session
+            // Clear driver session and trip data
             await AsyncStorage.removeItem('driverSession');
+            await AsyncStorage.removeItem('currentTrip');
             
             setIsOnDuty(false);
             setCurrentTrip(null);
@@ -319,6 +538,9 @@ export default function DriverHomeScreen({ navigation }) {
           setCurrentCapacity(currentBus.capacity_percentage || 0);
           setShowCapacityModal(true);
         }
+        break;
+      case 'alarm':
+        setShowAlarmModal(true);
         break;
       case 'reportIssue':
         navigation.navigate('DriverMaintenance');
@@ -373,11 +595,75 @@ export default function DriverHomeScreen({ navigation }) {
     );
   };
 
+  const handleOffDuty = async () => {
+    if (!isOnDuty) {
+      Alert.alert('Already Off Duty', 'You are already off duty.');
+      return;
+    }
+
+    Alert.alert(
+      'Go Off Duty',
+      'Are you sure you want to go off duty? This will stop location tracking.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Go Off Duty',
+          onPress: async () => {
+            try {
+              // Stop location updates
+              await stopLocationUpdates();
+              
+              // Clear current location from bus
+              if (currentBus?.id) {
+                await updateBusLocation({
+                  busId: currentBus.id,
+                  latitude: null,
+                  longitude: null,
+                  accuracy: null,
+                  speed: null,
+                });
+              }
+              
+              // End driver session
+              const sessionData = await AsyncStorage.getItem('driverSession');
+              if (sessionData) {
+                const session = JSON.parse(sessionData);
+                await endDriverSession(session.id);
+              }
+              
+              // Clear driver session
+              await AsyncStorage.removeItem('driverSession');
+              
+              // Update driver status
+              if (currentDriver?.id) {
+                await updateDriverStatus(currentDriver.id, 'inactive');
+              }
+              
+              setIsOnDuty(false);
+              setCurrentTrip(null);
+              setPassengerCount(0);
+              setTripStartTime(null);
+              setCurrentLocation(null);
+              
+              Alert.alert('Off Duty', 'You are now off duty. Location tracking has stopped.');
+            } catch (error) {
+              console.error('Error going off duty:', error);
+              Alert.alert('Error', 'Failed to go off duty. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3B82F6" />
+          <ActivityIndicator size="large" color="#f59e0b" />
           <Text style={styles.loadingText}>Loading driver data...</Text>
         </View>
       </View>
@@ -411,15 +697,25 @@ export default function DriverHomeScreen({ navigation }) {
       <View style={styles.headerContainer}>
         <View style={styles.headerRow}>
           <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-            <Ionicons name="menu" size={24} color="#374151" />
+            <Ionicons name="menu" size={24} color="#fff" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Driver Dashboard</Text>
             <Text style={styles.headerSubtitle}>Metro NaviGo Driver</Text>
           </View>
-          <TouchableOpacity style={styles.profileButton} onPress={handleProfilePress}>
-            <Ionicons name="person-circle" size={32} color="#374151" />
-          </TouchableOpacity>
+          <View style={styles.headerRightButtons}>
+            <TouchableOpacity style={styles.pingButton} onPress={() => setShowPingModal(true)}>
+              <Ionicons name="notifications" size={24} color="#fff" />
+              {unreadPingCount > 0 && (
+                <View style={styles.pingBadge}>
+                  <Text style={styles.pingBadgeText}>{unreadPingCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.profileButton} onPress={handleProfilePress}>
+              <Ionicons name="person-circle" size={32} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
         
         <View style={styles.dutyStatus}>
@@ -430,10 +726,18 @@ export default function DriverHomeScreen({ navigation }) {
                 {isOnDuty ? 'On Duty' : 'Off Duty'}
               </Text>
             </View>
-            <TouchableOpacity style={styles.switchButton} onPress={handleRoleSwitch}>
-              <Ionicons name="car" size={20} color="#374151" />
-              <Text style={styles.switchText}>Switch</Text>
-            </TouchableOpacity>
+            <View style={styles.buttonRow}>
+              {isOnDuty && (
+                <TouchableOpacity style={styles.offDutyButton} onPress={handleOffDuty}>
+                  <Ionicons name="stop-circle" size={20} color="#EF4444" />
+                  <Text style={styles.offDutyText}>Off Duty</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.switchButton} onPress={handleRoleSwitch}>
+                <Ionicons name="swap-horizontal" size={20} color="#f59e0b" />
+                <Text style={styles.switchText}>Switch Mode</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </View>
@@ -444,7 +748,7 @@ export default function DriverHomeScreen({ navigation }) {
           <View style={styles.currentTripCard}>
             <View style={styles.tripHeader}>
               <View style={styles.tripIconContainer}>
-                <Ionicons name="bus" size={24} color="#3B82F6" />
+                <Ionicons name="bus" size={24} color="#f59e0b" />
               </View>
               <View style={styles.tripHeaderText}>
                 <Text style={styles.currentTripTitle}>Active Trip</Text>
@@ -539,7 +843,7 @@ export default function DriverHomeScreen({ navigation }) {
                 <View key={trip.id} style={styles.tripCardCompact}>
                   <View style={styles.tripCardLeft}>
                     <View style={styles.tripIconSmall}>
-                      <Ionicons name="bus" size={16} color="#3B82F6" />
+                      <Ionicons name="bus" size={16} color="#f59e0b" />
                     </View>
                     <View style={styles.tripInfoCompact}>
                       <Text style={styles.tripRouteCompact}>{trip.route}</Text>
@@ -613,7 +917,7 @@ export default function DriverHomeScreen({ navigation }) {
                   }
                 }}
               >
-                <Ionicons name="refresh" size={20} color="#3B82F6" />
+                <Ionicons name="refresh" size={20} color="#f59e0b" />
                 <Text style={styles.actionButtonText}>Reset Count</Text>
               </TouchableOpacity>
               
@@ -670,6 +974,148 @@ export default function DriverHomeScreen({ navigation }) {
         busId={currentBus?.id}
         busInfo={currentBus}
       />
+
+      {/* Alarm Modal */}
+      <AlarmModal
+        visible={showAlarmModal}
+        onClose={() => setShowAlarmModal(false)}
+        userType="driver"
+        driverId={currentDriver?.id}
+        busId={currentBus?.id}
+      />
+
+      {/* Ping Notifications Modal */}
+      <Modal
+        visible={showPingModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowPingModal(false)}>
+              <Text style={styles.modalCancel}>Close</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Passenger Pings</Text>
+            <TouchableOpacity onPress={loadPingNotifications}>
+              <Ionicons name="refresh" size={24} color="#f59e0b" />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.modalContent}>
+            {pingNotifications.length === 0 ? (
+              <View style={styles.emptyPingContainer}>
+                <Ionicons name="notifications-off" size={64} color="#D1D5DB" />
+                <Text style={styles.emptyPingText}>No ping notifications</Text>
+                <Text style={styles.emptyPingSubtext}>Passengers will appear here when they ping you</Text>
+              </View>
+            ) : (
+              pingNotifications.map((ping) => (
+                <View key={ping.id} style={styles.pingCard}>
+                  <View style={styles.pingHeader}>
+                    <View style={styles.pingUserInfo}>
+                      <Ionicons name="person-circle" size={40} color="#f59e0b" />
+                      <View style={{ marginLeft: 12 }}>
+                        <Text style={styles.pingUserName}>
+                          {ping.users?.first_name || 'Passenger'} {ping.users?.last_name || ''}
+                        </Text>
+                        <Text style={styles.pingTime}>
+                          {new Date(ping.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={[
+                      styles.pingStatusBadge,
+                      { backgroundColor: 
+                        ping.status === 'pending' ? '#FEF3C7' :
+                        ping.status === 'acknowledged' ? '#DBEAFE' :
+                        '#D1FAE5'
+                      }
+                    ]}>
+                      <Text style={[
+                        styles.pingStatusText,
+                        { color:
+                          ping.status === 'pending' ? '#92400E' :
+                          ping.status === 'acknowledged' ? '#1E40AF' :
+                          '#065F46'
+                        }
+                      ]}>
+                        {ping.status === 'pending' ? 'NEW' :
+                         ping.status === 'acknowledged' ? 'SEEN' :
+                         'DONE'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.pingBody}>
+                    <View style={styles.pingTypeRow}>
+                      <Ionicons 
+                        name={
+                          ping.ping_type === 'ride_request' ? 'bus' :
+                          ping.ping_type === 'location_request' ? 'location' :
+                          ping.ping_type === 'eta_request' ? 'time' :
+                          'chatbubble'
+                        } 
+                        size={16} 
+                        color="#6B7280" 
+                      />
+                      <Text style={styles.pingType}>
+                        {ping.ping_type === 'ride_request' ? 'Ride Request' :
+                         ping.ping_type === 'location_request' ? 'Location Request' :
+                         ping.ping_type === 'eta_request' ? 'ETA Request' :
+                         'Message'}
+                      </Text>
+                    </View>
+
+                    {ping.message && (
+                      <Text style={styles.pingMessage}>{ping.message}</Text>
+                    )}
+
+                    {ping.location_latitude && ping.location_longitude && (
+                      <View style={styles.pingLocation}>
+                        <Ionicons name="location" size={16} color="#f59e0b" />
+                        <Text style={styles.pingLocationText}>
+                          {ping.location_address || `${ping.location_latitude.toFixed(5)}, ${ping.location_longitude.toFixed(5)}`}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {ping.status === 'pending' && (
+                    <View style={styles.pingActions}>
+                      <TouchableOpacity 
+                        style={[styles.pingActionButton, styles.acknowledgeButton]}
+                        onPress={() => handleAcknowledgePing(ping.id)}
+                      >
+                        <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                        <Text style={styles.pingActionButtonText}>Acknowledge</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.pingActionButton, styles.completeButton]}
+                        onPress={() => handleCompletePing(ping.id)}
+                      >
+                        <Ionicons name="checkmark-done-circle" size={20} color="#fff" />
+                        <Text style={styles.pingActionButtonText}>Complete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {ping.status === 'acknowledged' && (
+                    <View style={styles.pingActions}>
+                      <TouchableOpacity 
+                        style={[styles.pingActionButton, styles.completeButton, { flex: 1 }]}
+                        onPress={() => handleCompletePing(ping.id)}
+                      >
+                        <Ionicons name="checkmark-done-circle" size={20} color="#fff" />
+                        <Text style={styles.pingActionButtonText}>Mark Complete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -680,17 +1126,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
   },
   headerContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#f59e0b',
     paddingTop: 60,
-    paddingBottom: 24,
+    paddingBottom: 32,
     paddingHorizontal: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 12,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
   headerRow: {
     flexDirection: 'row',
@@ -702,7 +1148,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -711,41 +1157,81 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    color: '#1A1A1A',
-    fontSize: 24,
-    fontWeight: '700',
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: '800',
     marginBottom: 4,
     fontFamily: 'System',
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   headerSubtitle: {
-    color: '#6B7280',
+    color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     fontFamily: 'System',
+  },
+  headerRightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pingButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  pingBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#f59e0b',
+  },
+  pingBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   profileButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   dutyStatus: {
-    backgroundColor: '#F8F9FA',
-    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 24,
     padding: 20,
+    marginTop: -20,
+    marginHorizontal: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 6,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   statusInfo: {
-    flex: 1,
+    flexShrink: 0,
+    marginRight: 16,
+    paddingTop: 4,
   },
   statusLabel: {
     color: '#6B7280',
@@ -757,6 +1243,34 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 18,
     fontWeight: '700',
+    fontFamily: 'System',
+  },
+  buttonRow: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    flexShrink: 1,
+    paddingTop: 4,
+  },
+  offDutyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  offDutyText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
     fontFamily: 'System',
   },
   switchButton: {
@@ -773,6 +1287,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+    marginTop: 8,
   },
   switchText: {
     color: '#374151',
@@ -787,17 +1302,17 @@ const styles = StyleSheet.create({
   },
   currentTripCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: 28,
+    padding: 28,
     marginTop: 24,
     marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 25,
+    elevation: 12,
+    borderWidth: 2,
+    borderColor: '#f0f9ff',
   },
   tripHeader: {
     flexDirection: 'row',
@@ -925,17 +1440,17 @@ const styles = StyleSheet.create({
   quickActionCard: {
     width: (width - 72) / 2,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 24,
+    padding: 24,
     marginBottom: 16,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: '#f8f9fa',
   },
   cardPressed: {
     transform: [{ scale: 0.96 }],
@@ -960,7 +1475,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   tripsListCompact: {
-    gap: 12,
   },
   tripCardCompact: {
     backgroundColor: '#FFFFFF',
@@ -974,6 +1488,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
+    marginBottom: 12,
     shadowRadius: 8,
     elevation: 2,
   },
@@ -1069,7 +1584,6 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   tripDetails: {
-    gap: 8,
   },
   tripDetail: {
     flexDirection: 'row',
@@ -1078,6 +1592,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
+    marginBottom: 8,
   },
   tripDetailText: {
     fontSize: 14,
@@ -1125,7 +1640,7 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 24,
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#f59e0b',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 16,
@@ -1174,7 +1689,7 @@ const styles = StyleSheet.create({
   },
   modalSave: {
     fontSize: 16,
-    color: '#3B82F6',
+    color: '#f59e0b',
     fontWeight: '600',
     fontFamily: 'System',
   },
@@ -1210,7 +1725,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   counterButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#f59e0b',
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -1237,7 +1752,6 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   passengerActions: {
-    gap: 16,
   },
   actionButton: {
     flexDirection: 'row',
@@ -1249,6 +1763,7 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
+    marginBottom: 16,
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
@@ -1259,5 +1774,152 @@ const styles = StyleSheet.create({
     marginLeft: 16,
     fontWeight: '600',
     fontFamily: 'System',
+  },
+  pingButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pingBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#f59e0b',
+  },
+  pingBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  emptyPingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyPingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginTop: 16,
+  },
+  emptyPingSubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 40,
+  },
+  pingCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    marginHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  pingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  pingUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  pingUserName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  pingTime: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  pingStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  pingStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  pingBody: {
+    marginBottom: 16,
+  },
+  pingTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pingType: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginLeft: 8,
+  },
+  pingMessage: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  pingLocation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  pingLocationText: {
+    fontSize: 13,
+    color: '#92400E',
+    marginLeft: 6,
+    flex: 1,
+  },
+  pingActions: {
+    flexDirection: 'row',
+  },
+  pingActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginLeft: 12,
+  },
+  acknowledgeButton: {
+    backgroundColor: '#3B82F6',
+  },
+  completeButton: {
+    backgroundColor: '#10B981',
+  },
+  pingActionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 

@@ -73,6 +73,7 @@ CREATE TABLE stops (
   route_id UUID REFERENCES routes(id),
   sequence INTEGER, -- order of stops in a route
   estimated_time_to_next INTEGER, -- minutes to next stop
+  is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -116,6 +117,21 @@ CREATE TABLE feedback (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Driver assignments table for tracking driver-bus-route assignments
+CREATE TABLE driver_assignments (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  driver_id UUID REFERENCES drivers(id) ON DELETE CASCADE,
+  bus_id UUID REFERENCES buses(id) ON DELETE CASCADE,
+  route_id UUID REFERENCES routes(id) ON DELETE CASCADE,
+  assigned_by UUID, -- References admin user (can be null for system assignments)
+  assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  unassigned_at TIMESTAMP WITH TIME ZONE,
+  is_active BOOLEAN DEFAULT true,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Note: Indexes will be created after tables and sample data
 
 -- Create updated_at trigger function
@@ -152,14 +168,18 @@ CREATE TRIGGER update_bus_tracking_updated_at BEFORE UPDATE ON bus_tracking FOR 
 DROP TRIGGER IF EXISTS update_feedback_updated_at ON feedback;
 CREATE TRIGGER update_feedback_updated_at BEFORE UPDATE ON feedback FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_driver_assignments_updated_at ON driver_assignments;
+CREATE TRIGGER update_driver_assignments_updated_at BEFORE UPDATE ON driver_assignments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Enable Row Level Security (safe to re-run)
-ALTER TABLE buses          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE routes         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE stops          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE schedules      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE drivers        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE feedback       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE buses              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE routes             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stops              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE schedules          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE drivers            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feedback           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE driver_assignments ENABLE ROW LEVEL SECURITY;
 
 -- Public read policies (drop/create for idempotency)
 DROP POLICY IF EXISTS "Public read access" ON buses;
@@ -183,6 +203,10 @@ CREATE POLICY "Users can insert feedback" ON feedback FOR INSERT WITH CHECK (tru
 
 DROP POLICY IF EXISTS "Users can read own feedback" ON feedback;
 CREATE POLICY "Users can read own feedback" ON feedback FOR SELECT USING (true);
+
+-- Driver assignments policies
+DROP POLICY IF EXISTS "Public read access" ON driver_assignments;
+CREATE POLICY "Public read access" ON driver_assignments FOR SELECT USING (true);
 
 -- Note: No longer need buses_with_tracking view since tracking is integrated into buses table
 -- The buses table now contains all necessary data directly
@@ -326,6 +350,59 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Drop existing function if it exists to avoid conflicts
+DROP FUNCTION IF EXISTS update_bus_location_simple(UUID, DECIMAL, DECIMAL, DECIMAL, DECIMAL);
+
+-- Simplified function for real-time bus location updates with better response
+CREATE FUNCTION update_bus_location_simple(
+  p_bus_id UUID,
+  p_latitude DECIMAL(10, 8),
+  p_longitude DECIMAL(11, 8),
+  p_accuracy DECIMAL(5, 2) DEFAULT NULL,
+  p_speed_kmh DECIMAL(5, 2) DEFAULT NULL
+)
+RETURNS JSON AS $$
+DECLARE
+  v_bus_exists BOOLEAN;
+BEGIN
+  -- Check if bus exists
+  SELECT EXISTS(SELECT 1 FROM buses WHERE id = p_bus_id) INTO v_bus_exists;
+  
+  IF NOT v_bus_exists THEN
+    RETURN json_build_object(
+      'success', false,
+      'message', 'Bus not found',
+      'bus_id', p_bus_id
+    );
+  END IF;
+  
+  -- Update bus location
+  UPDATE buses SET
+    latitude = p_latitude,
+    longitude = p_longitude,
+    accuracy = p_accuracy,
+    speed = p_speed_kmh,
+    tracking_status = CASE 
+      WHEN p_speed_kmh > 0 THEN 'moving'
+      WHEN p_speed_kmh = 0 THEN 'stopped'
+      ELSE tracking_status
+    END,
+    last_location_update = NOW(),
+    updated_at = NOW()
+  WHERE id = p_bus_id;
+  
+  -- Return success response
+  RETURN json_build_object(
+    'success', true,
+    'message', 'Location updated successfully',
+    'bus_id', p_bus_id,
+    'latitude', p_latitude,
+    'longitude', p_longitude,
+    'timestamp', NOW()
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Drop existing function if it exists to avoid conflicts
 DROP FUNCTION IF EXISTS get_bus_statistics();
 
 -- Function to get bus statistics
@@ -359,8 +436,13 @@ CREATE INDEX IF NOT EXISTS idx_schedules_route_id ON schedules(route_id);
 CREATE INDEX IF NOT EXISTS idx_schedules_bus_id ON schedules(bus_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at);
+CREATE INDEX IF NOT EXISTS idx_driver_assignments_driver_id ON driver_assignments(driver_id);
+CREATE INDEX IF NOT EXISTS idx_driver_assignments_bus_id ON driver_assignments(bus_id);
+CREATE INDEX IF NOT EXISTS idx_driver_assignments_route_id ON driver_assignments(route_id);
+CREATE INDEX IF NOT EXISTS idx_driver_assignments_is_active ON driver_assignments(is_active);
 
 -- Grant necessary permissions for the functions
 GRANT EXECUTE ON FUNCTION get_nearby_buses TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION update_bus_location TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION update_bus_location_simple TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION get_bus_statistics TO anon, authenticated; 

@@ -16,6 +16,7 @@ import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-ic
 import * as Location from 'expo-location';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { useDrawer } from '../contexts/DrawerContext';
+import SetAlarmModal from '../components/SetAlarmModal';
 
 const { width } = Dimensions.get('window');
 
@@ -84,6 +85,7 @@ export default function HomeScreen({ navigation }) {
   const [location, setLocation] = useState(null);
   const [locationError, setLocationError] = useState(null);
   const [nearbyBuses, setNearbyBuses] = useState([]);
+  const [showSetAlarmModal, setShowSetAlarmModal] = useState(false);
   
   // Get data from Supabase context
   const { 
@@ -101,7 +103,7 @@ export default function HomeScreen({ navigation }) {
 
   const handleServicePress = (service) => {
     if (service.title === 'Set an Alarm') {
-      Alert.alert('Coming Soon', 'Alarm feature will be available in a future update!');
+      setShowSetAlarmModal(true);
     } else {
       navigation.navigate('Routes');
     }
@@ -157,13 +159,46 @@ export default function HomeScreen({ navigation }) {
     const userLon = location.coords.longitude;
 
     const busesWithDistance = buses
-      .filter(bus => bus.latitude && bus.longitude) // Only buses with valid coordinates
+      .filter(bus => {
+        // Show buses that have active drivers and valid coordinates (same logic as MapScreen)
+        const hasActiveDriver = bus.driver_id && bus.status === 'active';
+        const hasValidCoordinates = bus.latitude && bus.longitude && 
+          !isNaN(bus.latitude) && !isNaN(bus.longitude);
+        
+        // Debug logging for each bus
+        console.log('🏠 HomeScreen - Bus filter check:', {
+          bus_number: bus.bus_number,
+          driver_id: bus.driver_id,
+          status: bus.status,
+          hasActiveDriver,
+          hasValidCoordinates,
+          coords: { lat: bus.latitude, lng: bus.longitude }
+        });
+        
+        return hasActiveDriver && hasValidCoordinates;
+      })
       .map(bus => {
+        // Use fallback coordinates if needed
+        let lat = bus.latitude;
+        let lng = bus.longitude;
+        
+        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+          console.log('🏠 HomeScreen - No valid coordinates for bus, using fallback location');
+          const sampleCoords = [
+            { lat: 14.3294, lng: 120.9366 }, // Dasmarinas Terminal
+            { lat: 14.4591, lng: 120.9468 }, // Bacoor
+            { lat: 14.5995, lng: 120.9842 }  // Manila City Hall
+          ];
+          const randomCoord = sampleCoords[Math.floor(Math.random() * sampleCoords.length)];
+          lat = randomCoord.lat;
+          lng = randomCoord.lng;
+        }
+        
         const distance = calculateDistance(
           userLat, 
           userLon, 
-          bus.latitude, 
-          bus.longitude
+          lat, 
+          lng
         );
         
         const route = routes.find(r => r.id === bus.route_id);
@@ -175,7 +210,7 @@ export default function HomeScreen({ navigation }) {
           distanceKm: distance,
           estimatedArrival: `Estimated arrival ${calculateETA(distance, bus.speed || 25)}`,
           busId: bus.id,
-          currentLocation: { latitude: bus.latitude, longitude: bus.longitude },
+          currentLocation: { latitude: lat, longitude: lng },
           lastUpdated: bus.last_location_update || bus.updated_at,
           route: route ? `Route ${route.route_number}` : 'Unknown',
           status: bus.tracking_status || bus.status || 'active',
@@ -301,8 +336,27 @@ export default function HomeScreen({ navigation }) {
         contentContainerStyle={styles.contentContainer} 
         showsVerticalScrollIndicator={false}
       >
-        {/* Welcome */}
-        <Text style={styles.welcome}>Welcome to Metro Link</Text>
+        {/* Modern Welcome Section with Quick Stats */}
+        <View style={styles.welcomeSection}>
+          <Text style={styles.welcome}>Welcome to Metro Link</Text>
+          <View style={styles.quickStatsRow}>
+            <View style={styles.quickStatCard}>
+              <Ionicons name="bus" size={20} color="#f59e0b" />
+              <Text style={styles.quickStatNumber}>{buses.length}</Text>
+              <Text style={styles.quickStatLabel}>Buses</Text>
+            </View>
+            <View style={styles.quickStatCard}>
+              <Ionicons name="navigate" size={20} color="#10b981" />
+              <Text style={styles.quickStatNumber}>{routes.length}</Text>
+              <Text style={styles.quickStatLabel}>Routes</Text>
+            </View>
+            <View style={styles.quickStatCard}>
+              <Ionicons name="location" size={20} color="#3b82f6" />
+              <Text style={styles.quickStatNumber}>{nearbyBuses.length}</Text>
+              <Text style={styles.quickStatLabel}>Nearby</Text>
+            </View>
+          </View>
+        </View>
 
         {/* Search */}
         <View style={styles.searchSection}>
@@ -324,26 +378,36 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Explore Services */}
-        <Text style={styles.sectionLabel}>Explore Services</Text>
-        <View style={styles.servicesRow}>
-          {services.map((service, idx) => (
-            <Pressable
-              key={idx}
-              style={({ pressed }) => [
-                styles.serviceCard,
-                pressed && styles.cardPressed,
-              ]}
-              android_ripple={{ color: '#e0e0e0' }}
-              onPress={() => handleServicePress(service)}
-            >
-              <MaterialIcons name={service.icon} size={32} color={service.color} />
-              <Text style={styles.serviceTitle}>{service.title}</Text>
-              <View style={styles.arrowContainer}>
-                <Ionicons name="chevron-forward" size={16} color={service.color} />
-              </View>
-            </Pressable>
-          ))}
+        {/* Explore Services - Modern Grid */}
+        <View style={styles.servicesSection}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionLabel}>Quick Actions</Text>
+            <TouchableOpacity style={styles.viewAllButton}>
+              <Text style={styles.viewAllText}>View All</Text>
+              <Ionicons name="arrow-forward" size={14} color="#f59e0b" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.servicesRow}>
+            {services.map((service, idx) => (
+              <Pressable
+                key={idx}
+                style={({ pressed }) => [
+                  styles.modernServiceCard,
+                  pressed && styles.cardPressed,
+                ]}
+                android_ripple={{ color: '#ffe4b3' }}
+                onPress={() => handleServicePress(service)}
+              >
+                <View style={styles.serviceIconContainer}>
+                  <MaterialIcons name={service.icon} size={28} color={service.color} />
+                </View>
+                <Text style={styles.modernServiceTitle}>{service.title}</Text>
+                <View style={styles.modernArrowContainer}>
+                  <Ionicons name="arrow-forward" size={16} color="#fff" />
+                </View>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         {/* Nearby Buses */}
@@ -373,82 +437,90 @@ export default function HomeScreen({ navigation }) {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.busesScrollContainer}
               decelerationRate="fast"
-              snapToInterval={296} // 280 + 16 margin
+              snapToInterval={360} // 340 card width + 20 margin
               snapToAlignment="start"
             >
               {nearbyBuses.map((bus, index) => (
                 <Pressable
                   key={bus.id}
                   style={({ pressed }) => [
-                    styles.busCard,
+                    styles.modernBusCard,
                     pressed && styles.cardPressed,
                   ]}
                   android_ripple={{ color: '#e0e0e0' }}
                   onPress={() => handleBusPress(bus)}
                 >
-                {/* Bus Header with Route Badge */}
-                <View style={styles.busHeader}>
-                  <View style={styles.busNumberContainer}>
-                    <Ionicons name="bus" size={16} color="#f59e0b" />
-                    <Text style={styles.busNumber}>{bus.name.split('# ')[1]}</Text>
+                {/* Modern ETA Badge - Top Priority */}
+                <View style={styles.etaBadgeContainer}>
+                  <View style={styles.etaBadge}>
+                    <Ionicons name="time-outline" size={18} color="#fff" />
+                    <Text style={styles.etaBadgeText}>
+                      {calculateETA(bus.distanceKm, bus.speed || 25).replace('Estimated arrival ', '')}
+                    </Text>
                   </View>
-                  <View style={styles.routeBadge}>
-                    <Text style={styles.routeBadgeText}>{bus.route}</Text>
-                  </View>
-                </View>
-
-                {/* Enhanced Map Container */}
-                <View style={styles.busMapContainer}>
-                  <View style={styles.mapGradient}>
-                    <Ionicons name="map" size={32} color="#fff" />
-                    <View style={styles.busLocationPin}>
-                      <Ionicons name="location" size={16} color="#fff" />
-                    </View>
-                    <View style={styles.distanceOverlay}>
-                      <Text style={styles.distanceText}>{bus.distance}</Text>
-                    </View>
+                  <View style={[
+                    styles.modernStatusBadge, 
+                    { backgroundColor: bus.status === 'active' ? '#10b981' : '#f59e0b' }
+                  ]}>
+                    <View style={styles.statusDot} />
+                    <Text style={styles.modernStatusText}>{bus.status}</Text>
                   </View>
                 </View>
 
-                {/* Bus Information */}
-                <View style={styles.busInfo}>
-                  <View style={styles.etaContainer}>
-                    <Ionicons name="time" size={14} color="#666" />
-                    <Text style={styles.etaText}>{bus.estimatedArrival}</Text>
+                {/* Bus Number and Route - Hero Section */}
+                <View style={styles.busHeroSection}>
+                  <View style={styles.busIconCircle}>
+                    <Ionicons name="bus" size={28} color="#f59e0b" />
+                  </View>
+                  <View style={styles.busMainInfo}>
+                    <Text style={styles.modernBusNumber}>Bus #{bus.name.split('# ')[1]}</Text>
+                    <View style={styles.modernRouteBadge}>
+                      <Ionicons name="navigate-circle" size={14} color="#10b981" />
+                      <Text style={styles.modernRouteText}>{bus.route}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Distance and Fare Section */}
+                <View style={styles.infoGrid}>
+                  <View style={styles.infoGridItem}>
+                    <View style={styles.infoIconContainer}>
+                      <Ionicons name="location" size={16} color="#3b82f6" />
+                    </View>
+                    <View>
+                      <Text style={styles.infoGridLabel}>Distance</Text>
+                      <Text style={styles.infoGridValue}>{bus.distance}</Text>
+                    </View>
                   </View>
                   
-                  <View style={styles.busStatusContainer}>
-                    <View style={[
-                      styles.busStatusIndicator, 
-                      { backgroundColor: bus.status === 'active' ? '#4CAF50' : '#FF9800' }
-                    ]}>
-                      <Ionicons 
-                        name={bus.status === 'active' ? 'play' : 'pause'} 
-                        size={8} 
-                        color="#fff" 
-                      />
+                  <View style={styles.infoGridDivider} />
+                  
+                  <View style={styles.infoGridItem}>
+                    <View style={styles.infoIconContainer}>
+                      <Ionicons name="cash" size={16} color="#10b981" />
                     </View>
-                    <Text style={styles.busStatus}>{bus.status}</Text>
-                    <View style={styles.speedContainer}>
-                      <Ionicons name="card" size={12} color="#999" />
-                      <Text style={styles.speedText}>₱{bus.avgFare} avg</Text>
+                    <View>
+                      <Text style={styles.infoGridLabel}>Fare</Text>
+                      <Text style={styles.infoGridValue}>₱{bus.avgFare}</Text>
                     </View>
                   </View>
-
-                  {bus.lastUpdated && (
-                    <View style={styles.lastUpdatedContainer}>
-                      <Ionicons name="refresh" size={10} color="#999" />
-                      <Text style={styles.lastUpdated}>
-                        {new Date(bus.lastUpdated).toLocaleTimeString()}
-                      </Text>
-                    </View>
-                  )}
                 </View>
 
-                {/* Action Arrow */}
-                <View style={styles.actionArrow}>
-                  <Ionicons name="chevron-forward" size={16} color="#f59e0b" />
-                </View>
+                {/* Track Button */}
+                <TouchableOpacity style={styles.trackButton} onPress={() => handleBusPress(bus)}>
+                  <Text style={styles.trackButtonText}>Track Bus</Text>
+                  <Ionicons name="arrow-forward" size={18} color="#fff" />
+                </TouchableOpacity>
+
+                {/* Last Updated Footer */}
+                {bus.lastUpdated && (
+                  <View style={styles.modernLastUpdated}>
+                    <View style={styles.liveIndicator} />
+                    <Text style={styles.modernLastUpdatedText}>
+                      Updated {new Date(bus.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                )}
               </Pressable>
               ))}
             </ScrollView>
@@ -500,6 +572,13 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
       </ScrollView>
+
+      {/* Set Alarm Modal */}
+      <SetAlarmModal
+        visible={showSetAlarmModal}
+        onClose={() => setShowSetAlarmModal(false)}
+        userType="passenger"
+      />
     </View>
   );
 }
@@ -507,7 +586,7 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f8f9fa',
   },
   loadingContainer: {
     flex: 1,
@@ -603,12 +682,14 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 32,
     paddingHorizontal: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 12,
     position: 'relative',
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
   headerRow: {
     flexDirection: 'row',
@@ -677,18 +758,73 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: 120,
   },
+  welcomeSection: {
+    marginTop: 24,
+    marginBottom: 32,
+  },
   welcome: {
     fontSize: 32,
-    fontWeight: '700',
-    marginTop: 32,
-    marginBottom: 32,
+    fontWeight: '800',
+    marginBottom: 20,
     color: '#1a1a1a',
     fontFamily: 'System',
-    letterSpacing: -0.8,
+    letterSpacing: -1,
     lineHeight: 38,
   },
+  quickStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  quickStatCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  quickStatNumber: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  quickStatLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   searchSection: {
+    marginBottom: 32,
+  },
+  servicesSection: {
     marginBottom: 40,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#f59e0b',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -698,11 +834,10 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 22,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#1a1a1a',
     fontFamily: 'System',
-    letterSpacing: -0.4,
-    marginBottom: 16,
+    letterSpacing: -0.5,
   },
   refreshButton: {
     width: 32,
@@ -716,14 +851,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#e5e5e5',
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: '#f0f0f0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 8,
   },
   searchInput: {
     flex: 1,
@@ -746,42 +881,62 @@ const styles = StyleSheet.create({
   servicesRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 40,
-    gap: 20,
+    gap: 16,
   },
-  serviceCard: {
+  modernServiceCard: {
     flex: 1,
     backgroundColor: '#fff',
     borderRadius: 24,
-    alignItems: 'center',
-    padding: 28,
-    marginRight: 0,
+    padding: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 8,
     position: 'relative',
     borderWidth: 1,
     borderColor: '#f0f0f0',
+    minHeight: 140,
+    justifyContent: 'space-between',
   },
-  cardPressed: {
-    transform: [{ scale: 0.98 }],
-    opacity: 0.9,
+  serviceIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: '#fff5e6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ffe4b3',
   },
-  serviceTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+  modernServiceTitle: {
+    fontSize: 14,
+    fontWeight: '700',
     color: '#1a1a1a',
-    marginTop: 16,
-    textAlign: 'center',
+    lineHeight: 20,
     fontFamily: 'System',
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
-  arrowContainer: {
+  modernArrowContainer: {
     position: 'absolute',
     right: 12,
     top: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#f59e0b',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  cardPressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.9,
   },
   busesContainer: {
     marginBottom: 40,
@@ -790,20 +945,199 @@ const styles = StyleSheet.create({
     paddingRight: 24,
     paddingLeft: 0,
   },
-  busCard: {
-    width: 320,
+  modernBusCard: {
+    width: 340,
     backgroundColor: '#fff',
-    borderRadius: 24,
-    marginRight: 24,
+    borderRadius: 32,
+    marginRight: 20,
     padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 16,
     position: 'relative',
     borderWidth: 1,
     borderColor: '#f0f0f0',
+  },
+  etaBadgeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  etaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  etaBadgeText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+    marginLeft: 6,
+    letterSpacing: 0.3,
+  },
+  modernStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#fff',
+  },
+  modernStatusText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  busHeroSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  busIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 20,
+    backgroundColor: '#fff5e6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    borderWidth: 2,
+    borderColor: '#ffe4b3',
+  },
+  busMainInfo: {
+    flex: 1,
+  },
+  modernBusNumber: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  modernRouteBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#d1fae5',
+  },
+  modernRouteText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#10b981',
+    marginLeft: 4,
+  },
+  infoGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+  },
+  infoGridItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  infoIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  infoGridLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#999',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  infoGridValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1a1a1a',
+  },
+  infoGridDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: '#e0e0e0',
+    marginHorizontal: 16,
+  },
+  trackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f59e0b',
+    borderRadius: 20,
+    paddingVertical: 16,
+    gap: 8,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  trackButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  modernLastUpdated: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  liveIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
+    marginRight: 8,
+  },
+  modernLastUpdatedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#999',
   },
   busHeader: {
     flexDirection: 'row',
@@ -976,20 +1310,20 @@ const styles = StyleSheet.create({
   },
   feedbackInput: {
     backgroundColor: '#fff',
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 2,
     borderColor: '#f0f0f0',
-    padding: 20,
+    padding: 24,
     fontSize: 15,
     color: '#1a1a1a',
     fontFamily: 'System',
-    minHeight: 140,
+    minHeight: 160,
     textAlignVertical: 'top',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 8,
     fontWeight: '500',
   },
   characterCount: {
@@ -1008,17 +1342,17 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: '#f59e0b',
-    borderRadius: 20,
-    paddingVertical: 16,
-    paddingHorizontal: 40,
+    borderRadius: 28,
+    paddingVertical: 18,
+    paddingHorizontal: 48,
     alignItems: 'center',
     alignSelf: 'center',
     flexDirection: 'row',
     shadowColor: '#f59e0b',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 12,
   },
   submitButtonDisabled: {
     backgroundColor: '#ccc',

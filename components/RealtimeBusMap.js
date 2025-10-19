@@ -10,9 +10,14 @@ import {
   Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline, Circle } from 'react-native-maps';
+import MapView, { Marker, Polyline, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import Constants from 'expo-constants';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { validateLocation, calculateDistance } from '../utils/locationUtils';
+import RoutePolyline from './RoutePolyline';
+import FallbackBusList from './FallbackBusList';
+import { getAllRoutes, getRouteById } from '../data/routes';
+import { supabaseHelpers } from '../lib/supabase';
 
 const { width, height } = Dimensions.get('window');
 
@@ -23,7 +28,11 @@ const RealtimeBusMap = ({
   showArrivalTimes = true,
   showCapacityStatus = true,
   userLocation = null,
-  onBusesLoaded = null
+  onBusesLoaded = null,
+  showRoutes = true,
+  selectedRouteId = null,
+  onRouteSelect = null,
+  showInfoBubbles = true
 }) => {
   const { supabase, buses: contextBuses, routes } = useSupabase();
   const [buses, setBuses] = useState([]);
@@ -33,11 +42,22 @@ const RealtimeBusMap = ({
   const [realtimeSubscription, setRealtimeSubscription] = useState(null);
   const [locationValidation, setLocationValidation] = useState({});
   const [arrivalTimes, setArrivalTimes] = useState({});
+  const [availableRoutes, setAvailableRoutes] = useState([]);
+  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [showFallback, setShowFallback] = useState(false);
   
   // Animation refs
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const mapRef = useRef(null);
+
+  const getGoogleMapsApiKey = () => {
+    return (
+      Constants?.expoConfig?.extra?.GOOGLE_MAPS_API_KEY ||
+      Constants?.manifest?.extra?.GOOGLE_MAPS_API_KEY ||
+      undefined
+    );
+  };
 
   // Start pulse animation for live buses
   const startPulseAnimation = useCallback(() => {
@@ -66,6 +86,26 @@ const RealtimeBusMap = ({
     }).start();
   }, [fadeAnim]);
 
+  // Load available routes
+  const loadRoutes = useCallback(async () => {
+    try {
+      const routes = await getAllRoutes(supabaseHelpers);
+      setAvailableRoutes(routes);
+      console.log('✅ Loaded routes:', routes.length);
+      
+      // Set selected route if provided
+      if (selectedRouteId) {
+        const route = await getRouteById(selectedRouteId, supabaseHelpers);
+        if (route) {
+          setSelectedRoute(route);
+          console.log('✅ Selected route:', route.name);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading routes:', err);
+    }
+  }, [selectedRouteId]);
+
   // Load initial bus data - use the same approach as manual tracking
   const loadBuses = useCallback(async () => {
     try {
@@ -80,17 +120,46 @@ const RealtimeBusMap = ({
       
       console.log('🎯 RealtimeBusMap - Loading buses from context:', contextBuses.length);
       
-      // Transform buses to match expected format (same as MapScreen)
+      // Transform buses to match expected format - only show buses with active drivers/trips
       const transformedBuses = contextBuses.map(bus => {
         const route = routes?.find(r => r.id === bus.route_id);
+        
+        // Check if bus has an active driver session
+        const hasActiveDriver = bus.driver_id && bus.status === 'active';
+        const hasRecentLocation = bus.last_location_update && 
+          new Date(bus.last_location_update) > new Date(Date.now() - 5 * 60 * 1000); // Within last 5 minutes (stricter)
+        const hasValidCoordinates = bus.latitude && bus.longitude && 
+          !isNaN(bus.latitude) && !isNaN(bus.longitude);
+        
+        // Check if driver is actually online (has recent activity)
+        const isDriverOnline = hasRecentLocation && hasValidCoordinates;
+        
+        // Debug logging for each bus
+        console.log('🎯 RealtimeBusMap - Bus filter check:', {
+          bus_number: bus.bus_number,
+          driver_id: bus.driver_id,
+          status: bus.status,
+          hasActiveDriver,
+          hasRecentLocation,
+          hasValidCoordinates,
+          isDriverOnline,
+          lastUpdate: bus.last_location_update,
+          coords: { lat: bus.latitude, lng: bus.longitude }
+        });
+        
+        // Only show buses with active drivers AND recent location updates (driver is online)
+        if (!hasActiveDriver || !isDriverOnline) {
+          console.log('🎯 RealtimeBusMap - Skipping bus - driver offline or no recent location:', bus.bus_number, 'driver:', bus.driver_id, 'status:', bus.status, 'recent:', hasRecentLocation, 'coords:', bus.latitude, bus.longitude);
+          return null;
+        }
         
         // Get coordinates directly from the buses table
         let lat = bus.latitude;
         let lng = bus.longitude;
         
         // Fallback: if no coords, use sample coordinates
-        if (!lat || !lng) {
-          console.log('🚌 No coordinates for bus, using fallback location');
+        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+          console.log('🚌 No valid coordinates for bus, using fallback location');
           const sampleCoords = [
             { lat: 14.3294, lng: 120.9366 }, // Dasmarinas Terminal
             { lat: 14.4591, lng: 120.9468 }, // Bacoor
@@ -99,6 +168,7 @@ const RealtimeBusMap = ({
           const randomCoord = sampleCoords[Math.floor(Math.random() * sampleCoords.length)];
           lat = randomCoord.lat;
           lng = randomCoord.lng;
+          console.log('🚌 Using sample coordinates:', lat, lng);
         }
         
         const transformedBus = {
@@ -123,6 +193,7 @@ const RealtimeBusMap = ({
         console.log('🎯 RealtimeBusMap - Transformed bus:', transformedBus.bus_name, 'at', transformedBus.latitude, transformedBus.longitude);
         return transformedBus;
       }).filter(bus => {
+        if (!bus) return false; // Filter out null buses (inactive drivers)
         const isValid = typeof bus.latitude === 'number' && typeof bus.longitude === 'number';
         console.log('🎯 RealtimeBusMap - Bus filter check:', bus.bus_name, 'Valid:', isValid);
         return isValid;
@@ -147,6 +218,12 @@ const RealtimeBusMap = ({
       setLoading(false);
     }
   }, [contextBuses, routes, initialRegion, showArrivalTimes]);
+
+  // Refresh buses function for real-time updates
+  const refreshBuses = useCallback(async () => {
+    console.log('🔄 Refreshing buses due to location update...');
+    await loadBuses();
+  }, [loadBuses]);
 
   // Validate bus location
   const validateBusLocation = async (bus) => {
@@ -220,16 +297,35 @@ const RealtimeBusMap = ({
       console.log('🎯 Supabase client:', supabase);
       console.log('🎯 Supabase URL:', supabase.supabaseUrl);
       
+      // Create a more robust subscription with better error handling
       const subscription = supabase
-        .channel('bus_location_updates')
+        .channel('bus_location_updates', {
+          config: {
+            broadcast: { self: false },
+            presence: { key: 'bus-location-updates' }
+          }
+        })
         .on('postgres_changes', 
           { 
             event: 'UPDATE', 
             schema: 'public', 
-            table: 'buses'
+            table: 'buses',
+            filter: 'tracking_status=eq.moving'
           }, 
           (payload) => {
-            console.log('🎯 Real-time bus update received:', payload);
+            console.log('🎯 Real-time bus update received (moving buses only):', payload);
+            handleBusUpdate(payload);
+          }
+        )
+        .on('postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'buses',
+            filter: 'tracking_status=eq.stopped'
+          },
+          (payload) => {
+            console.log('🎯 Real-time bus update received (stopped buses):', payload);
             handleBusUpdate(payload);
           }
         )
@@ -244,12 +340,45 @@ const RealtimeBusMap = ({
             handleBusInsert(payload);
           }
         )
+        .on('postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'location_updates'
+          },
+          (payload) => {
+            console.log('🎯 Real-time location update received:', payload);
+            // Refresh buses data when new location update is inserted
+            refreshBuses();
+          }
+        )
+        .on('postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'buses',
+            filter: 'tracking_status=eq.offline'
+          },
+          (payload) => {
+            console.log('🎯 Real-time bus went offline:', payload);
+            // Remove offline buses from the map
+            setBuses(prevBuses => 
+              prevBuses.filter(bus => bus.bus_id !== payload.new.id)
+            );
+          }
+        )
         .subscribe((status) => {
           console.log('🎯 Real-time subscription status:', status);
           if (status === 'SUBSCRIBED') {
             console.log('✅ Real-time subscription is active and ready to receive updates');
+            // Test the subscription by triggering a test update
+            setTimeout(() => {
+              console.log('🧪 Testing real-time subscription...');
+              // This will help verify if real-time is working
+            }, 2000);
           } else if (status === 'CHANNEL_ERROR') {
-            console.error('❌ Real-time subscription failed');
+            console.error('❌ Real-time subscription failed - check if real-time is enabled for buses table');
+            console.error('💡 Run the SQL script: sql/enable-realtime-bus-tracking.sql');
           } else if (status === 'TIMED_OUT') {
             console.error('❌ Real-time subscription timed out');
           } else if (status === 'CLOSED') {
@@ -263,8 +392,9 @@ const RealtimeBusMap = ({
     } catch (error) {
       console.error('Error setting up real-time subscription:', error);
       console.error('Error details:', error.message, error.stack);
+      console.error('💡 Make sure real-time is enabled for the buses table in Supabase');
     }
-  }, [supabase]);
+  }, [supabase, refreshBuses]);
 
   // Handle bus updates from real-time subscription
   const handleBusUpdate = useCallback(async (payload) => {
@@ -474,7 +604,11 @@ const RealtimeBusMap = ({
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         };
-        mapRef.current.animateToRegion(region, 1000);
+        try {
+          mapRef.current.animateToRegion(region, 1000);
+        } catch (e) {
+          console.warn('animateToRegion failed:', e?.message || e);
+        }
       } else {
         console.log('🎯 RealtimeBusMap - Selected bus not found in buses');
         console.log('🎯 RealtimeBusMap - Looking for:', selectedBusId);
@@ -490,8 +624,9 @@ const RealtimeBusMap = ({
     }
   }, [buses, onBusesLoaded]);
 
-  // Load buses on mount
+  // Load buses and routes on mount
   useEffect(() => {
+    loadRoutes();
     loadBuses();
     setupRealtimeSubscription();
     startPulseAnimation();
@@ -528,11 +663,29 @@ const RealtimeBusMap = ({
   if (error) {
     return (
       <View style={styles.errorContainer}>
+        <Ionicons name="warning" size={40} color="#F44336" />
         <Text style={styles.errorText}>{error}</Text>
+        <Text style={styles.errorSubtext}>
+          If you see "Quota exceeded" error, the Google Maps API limit has been reached.
+        </Text>
         <TouchableOpacity style={styles.retryButton} onPress={loadBuses}>
           <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.fallbackButton} onPress={() => setShowFallback(true)}>
+          <Text style={styles.fallbackButtonText}>Show Bus List Instead</Text>
+        </TouchableOpacity>
       </View>
+    );
+  }
+
+  // Show fallback bus list if map fails or user chooses it
+  if (showFallback) {
+    return (
+      <FallbackBusList
+        buses={buses}
+        onBusSelect={onBusSelect}
+        loading={loading}
+      />
     );
   }
 
@@ -542,11 +695,20 @@ const RealtimeBusMap = ({
         ref={mapRef}
         style={styles.map}
         initialRegion={initialRegion}
+        provider={PROVIDER_GOOGLE}
+        apiKey={getGoogleMapsApiKey()}
         showsUserLocation
         showsMyLocationButton
         showsCompass
         showsScale
         mapType="standard"
+        onError={(error) => {
+          console.error('Map error:', error);
+          if (error.nativeEvent?.message?.includes('quota') || 
+              error.nativeEvent?.message?.includes('exceeded')) {
+            setError('Map disabled because Quota is EXCEEDED');
+          }
+        }}
       >
         {/* User location marker */}
         {userLocation && (
@@ -564,6 +726,22 @@ const RealtimeBusMap = ({
           </Marker>
         )}
         
+        {/* Route polylines */}
+        {showRoutes && availableRoutes.map((route) => (
+          <RoutePolyline
+            key={route.id}
+            route={route}
+            isVisible={!selectedRoute || selectedRoute.id === route.id}
+            showStops={true}
+            showDirection={true}
+            showInfoBubbles={showInfoBubbles}
+            isSelected={selectedRoute?.id === route.id}
+            onStopPress={(stop, index) => {
+              console.log('Stop pressed:', stop.name, 'at index:', index);
+            }}
+          />
+        ))}
+
         {/* Bus markers */}
         {console.log('🎯 RealtimeBusMap - Rendering', buses.length, 'bus markers')}
         {buses.length > 0 ? buses.map(renderBusMarker) : (
@@ -611,15 +789,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#DC2626',
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 20,
   },
   retryButton: {
     backgroundColor: '#DC2626',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
+    marginBottom: 10,
   },
   retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fallbackButton: {
+    backgroundColor: '#6B7280',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  fallbackButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',

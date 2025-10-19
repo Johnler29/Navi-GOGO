@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Bus, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Bus, Eye, EyeOff, Info } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const Login = () => {
@@ -33,46 +33,58 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <div className="w-12 h-12 bg-primary-500 rounded-lg flex items-center justify-center">
-            <Bus className="w-8 h-8 text-white" />
+        {/* Logo */}
+        <div className="flex justify-center mb-8">
+          <div className="relative">
+            <div className="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center 
+                          shadow-lg hover:shadow-xl transition-all duration-300">
+              <Bus className="w-9 h-9 text-white" />
+            </div>
           </div>
         </div>
-        <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
-          MetroBus Admin
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Sign in to your admin dashboard
-        </p>
+        
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Metro NaviGo Admin
+          </h1>
+          <p className="text-base text-gray-600">
+            Sign in to manage your fleet
+          </p>
+        </div>
       </div>
 
+      {/* Login Form */}
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 px-10 py-12">
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {/* Email */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
                 Email address
               </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  placeholder="admin@metrobus.com"
-                />
-              </div>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="block w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl 
+                         text-gray-900 placeholder-gray-400 
+                         focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100
+                         transition-all duration-200"
+                placeholder="admin@metrobus.com"
+              />
             </div>
 
+            {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
                 Password
               </label>
-              <div className="mt-1 relative">
+              <div className="relative">
                 <input
                   id="password"
                   name="password"
@@ -81,83 +93,103 @@ const Login = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 pr-10 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  className="block w-full px-4 py-3 pr-12 bg-gray-50 border border-gray-300 rounded-xl 
+                           text-gray-900 placeholder-gray-400 
+                           focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100
+                           transition-all duration-200"
                   placeholder="Enter your password"
                 />
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 
+                           hover:text-gray-600 transition-colors"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-gray-400" />
+                    <EyeOff className="h-5 w-5" />
                   ) : (
-                    <Eye className="h-4 w-4 text-gray-400" />
+                    <Eye className="h-5 w-5" />
                   )}
                 </button>
               </div>
             </div>
 
+            {/* Remember & Forgot */}
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <input
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-amber-500 focus:ring-amber-500 border-gray-300 rounded"
                 />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
                   Remember me
                 </label>
               </div>
 
-              <div className="text-sm">
-                <a href="#" className="font-medium text-primary-600 hover:text-primary-500">
-                  Forgot your password?
-                </a>
-              </div>
+              <a href="#" className="text-sm font-semibold text-amber-600 hover:text-amber-500">
+                Forgot password?
+              </a>
             </div>
 
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Signing in...
-                  </div>
-                ) : (
-                  'Sign in'
-                )}
-              </button>
-            </div>
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex justify-center py-3.5 px-4 border border-transparent 
+                       rounded-xl text-base font-semibold text-white bg-amber-500 
+                       hover:bg-amber-600 focus:outline-none focus:ring-4 focus:ring-amber-200
+                       disabled:opacity-50 disabled:cursor-not-allowed
+                       transition-all duration-200 shadow-sm hover:shadow-md"
+            >
+              {loading ? (
+                <div className="flex items-center">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Signing in...
+                </div>
+              ) : (
+                'Sign in'
+              )}
+            </button>
           </form>
 
-          <div className="mt-6">
+          {/* Demo Credentials */}
+          <div className="mt-8">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
+                <div className="w-full border-t border-gray-200" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Demo Credentials</span>
+                <span className="px-3 bg-white text-gray-500 font-medium">Demo Account</span>
               </div>
             </div>
 
-            <div className="mt-6 bg-gray-50 rounded-lg p-4">
-              <div className="flex items-center mb-2">
-                <AlertCircle className="w-4 h-4 text-blue-500 mr-2" />
-                <span className="text-sm font-medium text-gray-700">Demo Access</span>
-              </div>
-              <div className="text-xs text-gray-600 space-y-1">
-                <p><strong>Email:</strong> admin@metrobus.com</p>
-                <p><strong>Password:</strong> admin123</p>
+            <div className="mt-6 bg-blue-50 rounded-xl p-5 border border-blue-100">
+              <div className="flex items-start">
+                <Info className="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-900 mb-3">Quick Access</p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Email:</span>
+                      <span className="font-mono font-semibold text-gray-900">admin@metrobus.com</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Password:</span>
+                      <span className="font-mono font-semibold text-gray-900">admin123</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Footer */}
+        <p className="mt-6 text-center text-sm text-gray-500">
+          © 2025 Metro NaviGo. All rights reserved.
+        </p>
       </div>
     </div>
   );

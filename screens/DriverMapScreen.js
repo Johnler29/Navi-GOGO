@@ -10,8 +10,8 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import * as Location from 'expo-location';
 import Constants from 'expo-constants';
+import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSupabase } from '../contexts/SupabaseContext';
 
@@ -66,6 +66,28 @@ export default function DriverMapScreen({ navigation }) {
       stopLocationTracking();
     }
   }, [driverSession]);
+
+  // Also check for trip status from AsyncStorage on component mount
+  useEffect(() => {
+    const checkTripStatus = async () => {
+      try {
+        const tripData = await AsyncStorage.getItem('currentTrip');
+        if (tripData) {
+          const trip = JSON.parse(tripData);
+          console.log('🚌 Found active trip in storage:', trip);
+          // If we have an active trip but no driver session, try to restore it
+          if (!driverSession && trip.busId) {
+            console.log('🔄 Attempting to restore driver session for active trip');
+            // This will trigger the location tracking to start
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error checking trip status:', error);
+      }
+    };
+    
+    checkTripStatus();
+  }, []);
 
   // Restore persisted tracking flag
   const restoreTrackingState = async () => {
@@ -134,9 +156,9 @@ export default function DriverMapScreen({ navigation }) {
         } catch (e) {
           console.log('❌ Error during interval location fetch:', e);
         }
-      }, 3000); // Reduced from 5000ms to 3000ms for more frequent updates
+      }, 1500); // Reduced to 1.5 seconds for smooth real-time updates
 
-      console.log('✅ Location tracking started (3s polling with high accuracy)');
+      console.log('✅ Location tracking started (1.5s polling with high accuracy)');
     } catch (error) {
       console.error('❌ Error starting location tracking:', error);
       Alert.alert('Error', 'Failed to start location tracking.');
@@ -325,7 +347,7 @@ export default function DriverMapScreen({ navigation }) {
       }
 
       const session = JSON.parse(driverSession);
-      const assignment = driverBusAssignments.find(a => a.driver_id === session.driver_id);
+      const assignment = driverBusAssignments.find(a => a.drivers?.id === session.driver_id);
       
       if (!assignment) {
         console.log('No bus assignment found, using mock route');
@@ -333,7 +355,8 @@ export default function DriverMapScreen({ navigation }) {
         return;
       }
 
-      const bus = buses.find(b => b.id === assignment.bus_id);
+      // Use the bus data from the assignment (which includes nested route info)
+      const bus = assignment.buses;
       if (!bus || !bus.route_id) {
         console.log('No route found for bus, using mock route');
         loadMockRoute(currentLocation);
@@ -396,9 +419,11 @@ export default function DriverMapScreen({ navigation }) {
   };
 
   const getGoogleMapsApiKey = () => {
-    return Constants.expoConfig?.extra?.GOOGLE_MAPS_API_KEY || 
-           Constants.manifest?.extra?.GOOGLE_MAPS_API_KEY ||
-           'AIzaSyAv3CxZGhXEat9i1TcE0Ok6Eu-VU1Nl8wg'; // Fallback key
+    return (
+      Constants?.expoConfig?.extra?.GOOGLE_MAPS_API_KEY ||
+      Constants?.manifest?.extra?.GOOGLE_MAPS_API_KEY ||
+      undefined
+    );
   };
 
   const handleRetry = () => {
@@ -513,13 +538,19 @@ export default function DriverMapScreen({ navigation }) {
         style={styles.map}
         provider={PROVIDER_GOOGLE}
         initialRegion={initialRegion}
+        apiKey={getGoogleMapsApiKey()}
         showsUserLocation={true}
         showsMyLocationButton={true}
         followsUserLocation={true}
         userLocationPriority="high"
         userLocationUpdateInterval={10000}
         userLocationFastestInterval={5000}
-        apiKey={getGoogleMapsApiKey()}
+        onMapReady={() => console.log('🗺️ Driver map ready')}
+        onError={(e) => console.warn('MapView error:', e?.nativeEvent || e)}
+        onRegionChangeComplete={() => {}}
+        moveOnMarkerPress={false}
+        toolbarEnabled={false}
+        zoomControlEnabled={false}
       >
         {/* User location marker */}
         {location && (
@@ -530,7 +561,7 @@ export default function DriverMapScreen({ navigation }) {
             }}
             title="Your Location"
             description="You are here"
-            pinColor="blue"
+            pinColor="orange"
           />
         )}
 
@@ -590,11 +621,11 @@ export default function DriverMapScreen({ navigation }) {
 
         <View style={styles.actionButtons}>
           <TouchableOpacity style={styles.actionButton} onPress={handleRouteDeviation}>
-            <Ionicons name="refresh" size={18} color="#3B82F6" />
+            <Ionicons name="refresh" size={18} color="#f59e0b" />
             <Text style={styles.actionButtonText}>Recalc</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="information-circle" size={18} color="#3B82F6" />
+            <Ionicons name="information-circle" size={18} color="#f59e0b" />
             <Text style={styles.actionButtonText}>Info</Text>
           </TouchableOpacity>
         </View>
@@ -713,7 +744,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   retryButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#f59e0b',
     paddingHorizontal: 32,
     paddingVertical: 16,
     borderRadius: 16,
@@ -830,7 +861,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     fontSize: 12,
-    color: '#3B82F6',
+    color: '#f59e0b',
     fontWeight: '600',
     marginLeft: 6,
     fontFamily: 'System',

@@ -25,14 +25,15 @@ export const SupabaseProvider = ({ children }) => {
 
   // Load initial data
   useEffect(() => {
-    // Only load data in production or when explicitly needed
+    // Load data and setup real-time subscriptions in both dev and production
     if (__DEV__) {
       // In development, load minimal data
       loadMinimalData();
     } else {
       testConnectionAndLoadData();
-      setupRealtimeSubscriptions();
     }
+    // Always setup real-time subscriptions regardless of environment
+    setupRealtimeSubscriptions();
   }, []);
 
   // Minimal data loading for development
@@ -122,13 +123,25 @@ export const SupabaseProvider = ({ children }) => {
   };
 
   const setupRealtimeSubscriptions = () => {
+    console.log('🔄 Setting up real-time subscriptions...');
+    
     // Subscribe to bus location updates
     const busLocationSubscription = supabaseHelpers.subscribeToBusLocations((payload) => {
-      if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+      console.log('🎯 Real-time bus update received:', payload);
+      
+      if (payload.event === 'UPDATE' || payload.event === 'INSERT') {
+        console.log('✅ Processing bus update:', payload.new);
+        
         // Update bus location in real-time
         setBuses(prevBuses => {
           const updatedBuses = prevBuses.map(bus => {
             if (bus.id === payload.new.id) {
+              console.log('📍 Updating bus position:', {
+                id: bus.id,
+                old: { lat: bus.latitude, lng: bus.longitude },
+                new: { lat: payload.new.latitude, lng: payload.new.longitude }
+              });
+              
               return {
                 ...bus,
                 latitude: payload.new.latitude,
@@ -148,7 +161,7 @@ export const SupabaseProvider = ({ children }) => {
 
     // Subscribe to schedule updates
     const scheduleSubscription = supabaseHelpers.subscribeToSchedules((payload) => {
-      if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+      if (payload.event === 'UPDATE' || payload.event === 'INSERT') {
         setSchedules(prevSchedules => {
           const updatedSchedules = prevSchedules.map(schedule => {
             if (schedule.id === payload.new.id) {
@@ -161,12 +174,42 @@ export const SupabaseProvider = ({ children }) => {
       }
     });
 
+    // Log subscription status
+    if (busLocationSubscription) {
+      console.log('✅ Bus location subscription created');
+    } else {
+      console.error('❌ Failed to create bus location subscription');
+    }
+    
+    if (scheduleSubscription) {
+      console.log('✅ Schedule subscription created');
+    } else {
+      console.error('❌ Failed to create schedule subscription');
+    }
+
     // Cleanup subscriptions on unmount
     return () => {
+      console.log('🔄 Cleaning up real-time subscriptions...');
       busLocationSubscription?.unsubscribe();
       scheduleSubscription?.unsubscribe();
     };
   };
+
+  // Poll bus data in development for fallback real-time updates
+  useEffect(() => {
+    if (!__DEV__) return; // Only run in development
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const busesData = await supabaseHelpers.getBuses();
+        setBuses(busesData || []);
+      } catch (err) {
+        console.warn('⚠️ Error polling buses:', err.message);
+      }
+    }, 1500); // Poll every 1.5 seconds in development for smooth updates
+    
+    return () => clearInterval(pollInterval);
+  }, []);
 
   // Bus operations
   const getBusById = async (id) => {

@@ -32,11 +32,11 @@ class MainActivity : ReactActivity() {
   override fun createReactActivityDelegate(): ReactActivityDelegate {
     return ReactActivityDelegateWrapper(
           this,
-          BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
+          false, // New Architecture disabled
           object : DefaultReactActivityDelegate(
               this,
               mainComponentName,
-              fabricEnabled
+              false // fabricEnabled = false
           ){})
   }
 

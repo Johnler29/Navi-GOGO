@@ -73,10 +73,6 @@ export default function DriverLoginScreen({ navigation, onLoginSuccess, onBackTo
     }
   };
 
-  const handleDemoLogin = () => {
-    setEmail('gab.nakar@metrobus.com');
-    setPassword('demo123');
-  };
 
   return (
     <KeyboardAvoidingView 
@@ -97,7 +93,7 @@ export default function DriverLoginScreen({ navigation, onLoginSuccess, onBackTo
             <Text style={styles.backButtonText}>Back to Passenger</Text>
           </TouchableOpacity>
           <View style={styles.logoContainer}>
-            <Ionicons name="bus" size={48} color="#F59E0B" />
+            <Ionicons name="bus" size={52} color="#fff" />
           </View>
           <Text style={styles.title}>Metro NaviGo Driver</Text>
           <Text style={styles.subtitle}>Driver Login</Text>
@@ -155,27 +151,8 @@ export default function DriverLoginScreen({ navigation, onLoginSuccess, onBackTo
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.button, styles.demoButton]}
-            onPress={handleDemoLogin}
-          >
-            <Ionicons name="person-add" size={20} color="#F59E0B" />
-            <Text style={styles.demoButtonText}>Use Demo Credentials</Text>
-          </TouchableOpacity>
         </View>
 
-        <View style={styles.demoSection}>
-          <View style={styles.demoCard}>
-            <View style={styles.demoHeader}>
-              <Ionicons name="information-circle" size={16} color="#F59E0B" />
-              <Text style={styles.demoTitle}>Demo Credentials</Text>
-            </View>
-            <Text style={styles.demoText}>
-              Email: john.doe@metrobus.com{'\n'}
-              Password: demo123
-            </Text>
-          </View>
-        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -184,7 +161,7 @@ export default function DriverLoginScreen({ navigation, onLoginSuccess, onBackTo
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#f8f9fa',
   },
   content: {
     flex: 1,
@@ -214,18 +191,18 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FEF3C7',
+    width: 100,
+    height: 100,
+    borderRadius: 32,
+    backgroundColor: '#f59e0b',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 12,
   },
   title: {
     fontSize: 32,
@@ -249,17 +226,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 24,
     marginBottom: 20,
     paddingHorizontal: 20,
-    height: 56,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    height: 64,
+    borderWidth: 2,
+    borderColor: '#f0f0f0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 6,
   },
   inputIcon: {
     marginRight: 16,
@@ -278,69 +255,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    height: 56,
+    paddingVertical: 18,
+    borderRadius: 24,
+    marginBottom: 16,
+    height: 64,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
   },
   loginButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#f59e0b',
+    shadowColor: '#f59e0b',
   },
   loginButtonDisabled: {
     backgroundColor: '#9CA3AF',
-  },
-  demoButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
   buttonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
     marginLeft: 8,
-    fontFamily: 'System',
-  },
-  demoButtonText: {
-    color: '#F59E0B',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-    fontFamily: 'System',
-  },
-  demoSection: {
-    alignItems: 'center',
-  },
-  demoCard: {
-    backgroundColor: '#FFFBEB',
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    width: '100%',
-  },
-  demoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  demoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#F59E0B',
-    marginLeft: 8,
-    fontFamily: 'System',
-  },
-  demoText: {
-    fontSize: 14,
-    color: '#374151',
-    marginBottom: 4,
-    fontWeight: '500',
     fontFamily: 'System',
   },
 });

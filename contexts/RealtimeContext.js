@@ -83,9 +83,14 @@ export const RealtimeProvider = ({ children }) => {
 
   const setupDefaultSubscriptions = async () => {
     try {
-      // Subscribe to bus location updates
+      // Subscribe to bus location updates with better error handling
       const busLocationSub = supabase
-        .channel('bus_locations')
+        .channel('bus_locations', {
+          config: {
+            broadcast: { self: false },
+            presence: { key: 'bus-locations' }
+          }
+        })
         .on('postgres_changes', 
           { 
             event: 'UPDATE', 
@@ -93,6 +98,15 @@ export const RealtimeProvider = ({ children }) => {
             table: 'buses',
             filter: 'tracking_status=eq.moving'
           }, 
+          handleBusLocationUpdate
+        )
+        .on('postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'buses',
+            filter: 'tracking_status=eq.stopped'
+          },
           handleBusLocationUpdate
         )
         .on('postgres_changes',
@@ -106,10 +120,18 @@ export const RealtimeProvider = ({ children }) => {
         .subscribe((status) => {
           console.log('🚌 Bus location subscription status:', status);
           if (status === 'SUBSCRIBED') {
+            console.log('✅ Bus location subscription is active');
             setSubscriptions(prev => ({
               ...prev,
               busLocations: { status: 'active', channel: busLocationSub }
             }));
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('❌ Bus location subscription failed - check if real-time is enabled');
+            console.error('💡 Run: sql/enable-realtime-bus-tracking.sql');
+          } else if (status === 'TIMED_OUT') {
+            console.error('❌ Bus location subscription timed out');
+          } else if (status === 'CLOSED') {
+            console.error('❌ Bus location subscription closed');
           }
         });
 

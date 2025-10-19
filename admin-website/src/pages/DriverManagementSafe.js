@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '../contexts/SupabaseContext';
 import { Users, Plus, Search, UserCheck, Trash2, Bus, MapPin } from 'lucide-react';
+import { notifications } from '../utils/notifications';
 
 const DriverManagementSafe = () => {
   const { supabase, buses: contextBuses, drivers: contextDrivers, syncDriverBusAssignments } = useSupabase();
@@ -82,7 +83,7 @@ const DriverManagementSafe = () => {
       setDrivers([...drivers, ...data]);
       setDriverForm({ name: '', email: '', phone: '', license_number: '', is_admin: false });
       setShowAddDriver(false);
-      window.alert('Driver added successfully!');
+      notifications.driverCreated();
     } catch (error) {
       console.error('Error adding driver:', error);
       window.alert('Error adding driver: ' + error.message);
@@ -106,7 +107,7 @@ const DriverManagementSafe = () => {
       setAssignments([...assignments, ...data]);
       setAssignmentForm({ driver_id: '', bus_id: '' });
       setShowAssignDriver(false);
-      window.alert('Driver assigned successfully!');
+      notifications.driverAssigned();
     } catch (error) {
       console.error('Error assigning driver:', error);
       window.alert('Error assigning driver: ' + error.message);
@@ -125,7 +126,7 @@ const DriverManagementSafe = () => {
       if (error) throw error;
       
       setAssignments(assignments.filter(a => a.id !== assignmentId));
-      window.alert('Assignment removed successfully!');
+      notifications.driverUnassigned();
     } catch (error) {
       console.error('Error removing assignment:', error);
       window.alert('Error removing assignment: ' + error.message);

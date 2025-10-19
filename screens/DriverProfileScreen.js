@@ -75,14 +75,14 @@ export default function DriverProfileScreen({ navigation }) {
             });
             
             // Find assigned bus for this driver
-            const assignment = driverBusAssignments.find(assignment => assignment.driver_id === currentDriver.id);
+            const assignment = driverBusAssignments.find(assignment => assignment.drivers?.id === currentDriver.id);
             if (assignment) {
-              const assignedBus = buses.find(bus => bus.id === assignment.bus_id);
-              if (assignedBus) {
-                setCurrentBus(assignedBus);
-                console.log('✅ Assigned bus found:', assignedBus);
+              // Use the bus data from the assignment (which includes nested route info)
+              if (assignment.buses) {
+                setCurrentBus(assignment.buses);
+                console.log('✅ Assigned bus found:', assignment.buses);
               } else {
-                console.log('❌ Bus not found for assignment:', assignment.bus_id);
+                console.log('❌ Bus data not found in assignment');
               }
             } else {
               console.log('❌ No bus assignment found for driver:', currentDriver.id);
@@ -101,12 +101,12 @@ export default function DriverProfileScreen({ navigation }) {
             });
             
             // Find assigned bus for this driver
-            const assignment = driverBusAssignments.find(assignment => assignment.driver_id === currentDriver.id);
+            const assignment = driverBusAssignments.find(assignment => assignment.drivers?.id === currentDriver.id);
             if (assignment) {
-              const assignedBus = buses.find(bus => bus.id === assignment.bus_id);
-              if (assignedBus) {
-                setCurrentBus(assignedBus);
-                console.log('✅ Assigned bus found:', assignedBus);
+              // Use the bus data from the assignment (which includes nested route info)
+              if (assignment.buses) {
+                setCurrentBus(assignment.buses);
+                console.log('✅ Assigned bus found:', assignment.buses);
               }
             }
           }
@@ -233,7 +233,7 @@ export default function DriverProfileScreen({ navigation }) {
     return (
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3B82F6" />
+          <ActivityIndicator size="large" color="#f59e0b" />
           <Text style={styles.loadingText}>Loading profile...</Text>
         </View>
       </View>
@@ -283,7 +283,7 @@ export default function DriverProfileScreen({ navigation }) {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
-            <Ionicons name="person-circle" size={80} color="#3B82F6" />
+            <Ionicons name="person-circle" size={80} color="#f59e0b" />
           </View>
           <View style={styles.profileInfo}>
             <Text style={styles.driverName}>{driver.name}</Text>
@@ -295,7 +295,7 @@ export default function DriverProfileScreen({ navigation }) {
             </Text>
           </View>
           <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
-            <Ionicons name="create-outline" size={20} color="#3B82F6" />
+            <Ionicons name="create-outline" size={20} color="#f59e0b" />
           </TouchableOpacity>
         </View>
 
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
   weeklyValue: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#3B82F6',
+    color: '#f59e0b',
     marginBottom: 6,
     fontFamily: 'System',
     letterSpacing: -0.3,
@@ -730,7 +730,7 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   retryButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#f59e0b',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 16,
@@ -779,7 +779,7 @@ const styles = StyleSheet.create({
   },
   modalSave: {
     fontSize: 16,
-    color: '#3B82F6',
+    color: '#f59e0b',
     fontWeight: '600',
     fontFamily: 'System',
   },

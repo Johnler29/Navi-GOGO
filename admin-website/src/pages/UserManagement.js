@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserCheck, Plus, Search, Users, MessageSquare, Shield, Edit, Trash2, Eye, UserPlus, Mail, Phone, Calendar, Filter, Download } from 'lucide-react';
 import { useSupabase } from '../contexts/SupabaseContext';
+import { notifications } from '../utils/notifications';
 
 const UserManagement = () => {
   const { users, feedback, drivers, supabase, createDriverAccount, getDriversWithAuth, updateDriverStatus, deleteDriverAccount } = useSupabase();
@@ -9,6 +10,8 @@ const UserManagement = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [showCreateDriver, setShowCreateDriver] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [showEditDriver, setShowEditDriver] = useState(false);
+  const [editingDriver, setEditingDriver] = useState(null);
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -32,6 +35,16 @@ const UserManagement = () => {
     name: '',
     email: '',
     phone: ''
+  });
+
+  // Edit driver form state
+  const [editDriverForm, setEditDriverForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    licenseNumber: '',
+    phone: '',
+    isActive: true
   });
 
   // Load statistics
@@ -93,7 +106,11 @@ const UserManagement = () => {
       });
 
       if (data.success) {
-        alert('Driver account created successfully!');
+        // Driver should already be added to context state by createDriverAccount
+        // But let's also trigger a manual refresh to ensure UI updates
+        console.log('✅ Driver created successfully:', data.driver);
+        
+        notifications.driverCreated();
         setShowCreateDriver(false);
         setDriverForm({
           firstName: '',
@@ -104,12 +121,18 @@ const UserManagement = () => {
           licenseNumber: '',
           phone: ''
         });
+        
+        // Force a small delay to ensure the UI updates
+        setTimeout(() => {
+          console.log('🔄 Forcing driver list refresh...');
+          // The context should have already updated, but this ensures UI refresh
+        }, 100);
       } else {
-        alert(data.error || 'Failed to create driver account');
+        notifications.showError(data.error || 'Failed to create driver account');
       }
     } catch (error) {
       console.error('Error creating driver:', error);
-      alert('Error creating driver account: ' + error.message);
+      notifications.showError('Error creating driver account: ' + error.message);
     }
   };
 
@@ -129,12 +152,12 @@ const UserManagement = () => {
 
       if (error) throw error;
 
-      alert('User created successfully!');
+      notifications.userCreated();
       setShowCreateUser(false);
       setUserForm({ name: '', email: '', phone: '' });
     } catch (error) {
       console.error('Error creating user:', error);
-      alert('Error creating user: ' + error.message);
+      notifications.showError('Error creating user: ' + error.message);
     }
   };
 
@@ -149,10 +172,10 @@ const UserManagement = () => {
         .eq('id', userId);
 
       if (error) throw error;
-      alert('User deleted successfully!');
+      notifications.userDeleted();
     } catch (error) {
       console.error('Error deleting user:', error);
-      alert('Error deleting user: ' + error.message);
+      notifications.showError('Error deleting user: ' + error.message);
     }
   };
 
@@ -160,23 +183,82 @@ const UserManagement = () => {
   const handleToggleDriverStatus = async (driverId, currentStatus) => {
     try {
       await updateDriverStatus(driverId, currentStatus ? 'inactive' : 'active');
-      alert(`Driver ${currentStatus ? 'deactivated' : 'activated'} successfully!`);
+      if (currentStatus) {
+        notifications.driverDeactivated();
+      } else {
+        notifications.driverActivated();
+      }
     } catch (error) {
       console.error('Error updating driver status:', error);
-      alert('Error updating driver status: ' + error.message);
+      notifications.showError('Error updating driver status: ' + error.message);
     }
   };
 
   // Handle driver deletion
   const handleDeleteDriver = async (driverId) => {
-    if (!window.confirm('Are you sure you want to delete this driver account?')) return;
+    if (!window.confirm('Are you sure you want to delete this driver account? Any assigned buses will be unassigned.')) return;
 
     try {
-      await deleteDriverAccount(driverId);
-      alert('Driver account deleted successfully!');
+      const result = await deleteDriverAccount(driverId);
+      if (result.success) {
+        notifications.showSuccess(result.message);
+      } else {
+        notifications.driverDeleted();
+      }
     } catch (error) {
       console.error('Error deleting driver:', error);
-      alert('Error deleting driver: ' + error.message);
+      notifications.showError('Error deleting driver: ' + error.message);
+    }
+  };
+
+  // Handle edit driver
+  const handleEditDriver = (driver) => {
+    setEditingDriver(driver);
+    setEditDriverForm({
+      firstName: driver.first_name || '',
+      lastName: driver.last_name || '',
+      email: driver.email || '',
+      licenseNumber: driver.license_number || '',
+      phone: driver.phone || '',
+      isActive: driver.is_active
+    });
+    setShowEditDriver(true);
+  };
+
+  // Handle update driver
+  const handleUpdateDriver = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const { data, error } = await supabase
+        .from('drivers')
+        .update({
+          first_name: editDriverForm.firstName,
+          last_name: editDriverForm.lastName,
+          email: editDriverForm.email,
+          license_number: editDriverForm.licenseNumber,
+          phone: editDriverForm.phone,
+          is_active: editDriverForm.isActive
+        })
+        .eq('id', editingDriver.id)
+        .select();
+
+      if (error) throw error;
+
+      notifications.driverUpdated();
+      setShowEditDriver(false);
+      setEditingDriver(null);
+      setEditDriverForm({
+        firstName: '',
+        lastName: '',
+        email: '',
+        licenseNumber: '',
+        phone: '',
+        isActive: true
+      });
+    } catch (error) {
+      console.error('Error updating driver:', error);
+      notifications.showError('Error updating driver: ' + error.message);
     }
   };
 
@@ -473,7 +555,11 @@ const UserManagement = () => {
                           <button className="text-primary-600 hover:text-primary-900">
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button className="text-gray-600 hover:text-gray-900">
+                          <button 
+                            onClick={() => handleEditDriver(driver)}
+                            className="text-gray-600 hover:text-gray-900"
+                            title="Edit driver details"
+                          >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button 
@@ -730,6 +816,110 @@ const UserManagement = () => {
                     className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700"
                   >
                     Create User
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Driver Modal */}
+      {showEditDriver && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Edit Driver Details</h3>
+                <button
+                  onClick={() => {
+                    setShowEditDriver(false);
+                    setEditingDriver(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
+              </div>
+              <form onSubmit={handleUpdateDriver} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">First Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={editDriverForm.firstName}
+                      onChange={(e) => setEditDriverForm({...editDriverForm, firstName: e.target.value})}
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Last Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={editDriverForm.lastName}
+                      onChange={(e) => setEditDriverForm({...editDriverForm, lastName: e.target.value})}
+                      className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={editDriverForm.email}
+                    onChange={(e) => setEditDriverForm({...editDriverForm, email: e.target.value})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">License Number</label>
+                  <input
+                    type="text"
+                    required
+                    value={editDriverForm.licenseNumber}
+                    onChange={(e) => setEditDriverForm({...editDriverForm, licenseNumber: e.target.value})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Phone</label>
+                  <input
+                    type="tel"
+                    value={editDriverForm.phone}
+                    onChange={(e) => setEditDriverForm({...editDriverForm, phone: e.target.value})}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={editDriverForm.isActive}
+                      onChange={(e) => setEditDriverForm({...editDriverForm, isActive: e.target.checked})}
+                      className="rounded border-gray-300 text-primary-600 shadow-sm focus:border-primary-300 focus:ring focus:ring-primary-200 focus:ring-opacity-50"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Active Driver</span>
+                  </label>
+                </div>
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditDriver(false);
+                      setEditingDriver(null);
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700"
+                  >
+                    Update Driver
                   </button>
                 </div>
               </form>

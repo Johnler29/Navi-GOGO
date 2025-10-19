@@ -71,16 +71,24 @@ const LiveMap = ({ buses = [] }) => {
   const [mapError, setMapError] = useState(false);
   const mapRef = useRef(null);
 
-  const busesWithLocation = buses.filter(bus => 
-    bus.latitude && 
-    bus.longitude && 
-    !isNaN(bus.latitude) && 
-    !isNaN(bus.longitude) &&
-    bus.latitude >= -90 && 
-    bus.latitude <= 90 &&
-    bus.longitude >= -180 && 
-    bus.longitude <= 180
-  );
+  const busesWithLocation = buses.filter(bus => {
+    // Basic coordinate validation
+    const hasValidCoordinates = bus.latitude && 
+      bus.longitude && 
+      !isNaN(bus.latitude) && 
+      !isNaN(bus.longitude) &&
+      bus.latitude >= -90 && 
+      bus.latitude <= 90 &&
+      bus.longitude >= -180 && 
+      bus.longitude <= 180;
+    
+    // Only show buses with active drivers and recent location updates
+    const hasActiveDriver = bus.driver_id && bus.status === 'active';
+    const hasRecentLocation = bus.last_location_update && 
+      new Date(bus.last_location_update) > new Date(Date.now() - 5 * 60 * 1000); // Within last 5 minutes
+    
+    return hasValidCoordinates && hasActiveDriver && hasRecentLocation;
+  });
 
   // Reset map state when buses change
   useEffect(() => {
