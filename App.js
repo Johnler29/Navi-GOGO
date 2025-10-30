@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity, Modal } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +42,191 @@ import { DrawerProvider, useDrawer } from './contexts/DrawerContext';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// Temporary test harness flag to safely isolate crashes
+const TEST_MODE = false; // Set to false to run full app
+
+function AppTestHarness() {
+  const [step, setStep] = useState(0);
+
+  class ErrorBoundary extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = { hasError: false, error: null, info: null };
+    }
+    static getDerivedStateFromError(error) {
+      return { hasError: true, error };
+    }
+    componentDidCatch(error, info) {
+      this.setState({ info });
+      console.error('Test Harness ErrorBoundary:', error, info);
+    }
+    render() {
+      if (this.state.hasError) {
+        return (
+          <View style={styles.loadingContainer}>
+            <Text style={{ fontSize: 16, color: '#b91c1c', marginBottom: 8 }}>Error in step {step}</Text>
+            <Text selectable style={{ color: '#111' }}>{String(this.state.error)}</Text>
+            {this.state.info?.componentStack ? (
+              <Text selectable style={{ color: '#6b7280', marginTop: 8 }}>{this.state.info.componentStack}</Text>
+            ) : null}
+            <TouchableOpacity
+              onPress={() => this.setState({ hasError: false, error: null, info: null })}
+              style={{ padding: 10, backgroundColor: '#e5e7eb', borderRadius: 8, marginTop: 16 }}
+            >
+              <Text>Reset Error</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      return this.props.children;
+    }
+  }
+
+  const TestView = ({ label = 'Bare View' }) => (
+    <View style={styles.loadingContainer}>
+      <Text style={{ fontSize: 18, color: '#111' }}>{label}</Text>
+      <Text style={{ marginTop: 8, color: '#666' }}>Step {step}</Text>
+      <View style={{ flexDirection: 'row', marginTop: 16 }}>
+        <TouchableOpacity
+          onPress={() => setStep(Math.max(0, step - 1))}
+          style={{ padding: 10, backgroundColor: '#e5e7eb', borderRadius: 8, marginRight: 8 }}
+        >
+          <Text>Back</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setStep(Math.min(6, step + 1))}
+          style={{ padding: 10, backgroundColor: '#f59e0b', borderRadius: 8 }}
+        >
+          <Text style={{ color: '#fff' }}>Next</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={{ marginTop: 16 }}>
+        <Text style={{ color: '#444' }}>Stages:</Text>
+        <Text style={{ color: '#666' }}>0 Bare</Text>
+        <Text style={{ color: '#666' }}>1 AuthProvider</Text>
+        <Text style={{ color: '#666' }}>2 SupabaseProvider + Auth</Text>
+        <Text style={{ color: '#666' }}>3 DrawerProvider + Supabase + Auth</Text>
+        <Text style={{ color: '#666' }}>4 NavigationContainer (empty)</Text>
+        <Text style={{ color: '#666' }}>5 Navigation with one screen</Text>
+        <Text style={{ color: '#666' }}>6 Full AppContent</Text>
+      </View>
+    </View>
+  );
+
+  // Minimal single screen for stages 5+
+  const MinimalScreen = () => (
+    <View style={styles.loadingContainer}>
+      <Text style={{ fontSize: 18 }}>Minimal Screen OK</Text>
+    </View>
+  );
+
+  const renderStage = () => {
+    if (step === 0) return <TestView label="Bare View" />;
+    if (step === 1) return (
+      <AuthProvider>
+        <TestView label="AuthProvider only" />
+      </AuthProvider>
+    );
+    if (step === 2) return (
+      <SupabaseProvider>
+        <AuthProvider>
+          <TestView label="Supabase + Auth" />
+        </AuthProvider>
+      </SupabaseProvider>
+    );
+    if (step === 3) return (
+      <SupabaseProvider>
+        <AuthProvider>
+          <DrawerProvider>
+            <TestView label="Drawer + Supabase + Auth" />
+          </DrawerProvider>
+        </AuthProvider>
+      </SupabaseProvider>
+    );
+    if (step === 4) return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <NavigationContainer>
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Test" component={MinimalScreen} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </GestureHandlerRootView>
+    );
+    if (step === 5) return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SupabaseProvider>
+          <AuthProvider>
+            <DrawerProvider>
+              <NavigationContainer>
+                <Stack.Navigator screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="Minimal" component={MinimalScreen} />
+                </Stack.Navigator>
+              </NavigationContainer>
+            </DrawerProvider>
+          </AuthProvider>
+        </SupabaseProvider>
+      </GestureHandlerRootView>
+    );
+    // step >= 6 => full app content
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SupabaseProvider>
+          <AuthProvider>
+            <DrawerProvider>
+              <AppContent />
+            </DrawerProvider>
+          </AuthProvider>
+        </SupabaseProvider>
+      </GestureHandlerRootView>
+    );
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#fff' }}>
+      <ErrorBoundary>
+        {renderStage()}
+      </ErrorBoundary>
+      {/* Persistent Test Controls Overlay */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 24,
+          left: 0,
+          right: 0,
+          alignItems: 'center',
+        }}
+        pointerEvents="box-none"
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            padding: 8,
+            borderRadius: 12,
+            shadowColor: '#000',
+            shadowOpacity: 0.1,
+            shadowRadius: 6,
+            elevation: 3,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => setStep(Math.max(0, step - 1))}
+            style={{ paddingVertical: 8, paddingHorizontal: 14, backgroundColor: '#e5e7eb', borderRadius: 8, marginRight: 8 }}
+          >
+            <Text>Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setStep(Math.min(6, step + 1))}
+            style={{ paddingVertical: 8, paddingHorizontal: 14, backgroundColor: '#f59e0b', borderRadius: 8 }}
+          >
+            <Text style={{ color: '#fff' }}>Next</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 // Passenger Tab Navigator
 function PassengerTabNavigator() {
@@ -311,6 +497,9 @@ function AppContent() {
 }
 
 export default function App() {
+  if (TEST_MODE) {
+    return <AppTestHarness />;
+  }
   return (
     <SupabaseProvider>
       <AuthProvider>

@@ -613,41 +613,52 @@ export default function DriverHomeScreen({ navigation }) {
           text: 'Go Off Duty',
           onPress: async () => {
             try {
-              // Stop location updates
-              await stopLocationUpdates();
-              
-              // Clear current location from bus
-              if (currentBus?.id) {
-                await updateBusLocation({
-                  busId: currentBus.id,
-                  latitude: null,
-                  longitude: null,
-                  accuracy: null,
-                  speed: null,
-                });
-              }
-              
-              // End driver session
-              const sessionData = await AsyncStorage.getItem('driverSession');
-              if (sessionData) {
-                const session = JSON.parse(sessionData);
-                await endDriverSession(session.id);
-              }
-              
-              // Clear driver session
-              await AsyncStorage.removeItem('driverSession');
-              
-              // Update driver status
-              if (currentDriver?.id) {
-                await updateDriverStatus(currentDriver.id, 'inactive');
-              }
-              
+              // Optimistically update UI state so user isn't blocked by cleanup errors
               setIsOnDuty(false);
               setCurrentTrip(null);
               setPassengerCount(0);
               setTripStartTime(null);
               setCurrentLocation(null);
-              
+
+              // Stop location updates (non-fatal if this fails)
+              try { await stopLocationUpdates(); } catch (e) { console.warn('stopLocationUpdates failed:', e?.message || e); }
+
+              // Clear current location from bus (accept and continue on error)
+              if (currentBus?.id) {
+                try {
+                  await updateBusLocation({
+                    busId: currentBus.id,
+                    latitude: null,
+                    longitude: null,
+                    accuracy: null,
+                    speed: null,
+                  });
+                } catch (e) {
+                  console.warn('Clearing bus location failed:', e?.message || e);
+                }
+              }
+
+              // End driver session if present (continue on error)
+              try {
+                const sessionData = await AsyncStorage.getItem('driverSession');
+                if (sessionData) {
+                  const session = JSON.parse(sessionData);
+                  if (session?.id) {
+                    try { await endDriverSession(session.id); } catch (e) { console.warn('endDriverSession failed:', e?.message || e); }
+                  }
+                }
+              } catch (e) {
+                console.warn('Reading driverSession failed:', e?.message || e);
+              }
+
+              // Clear driver session key (non-blocking)
+              try { await AsyncStorage.removeItem('driverSession'); } catch (e) { console.warn('removeItem(driverSession) failed:', e?.message || e); }
+
+              // Update driver status (continue even if this fails due to RLS/columns)
+              if (currentDriver?.id) {
+                try { await updateDriverStatus(currentDriver.id, 'inactive'); } catch (e) { console.warn('updateDriverStatus failed:', e?.message || e); }
+              }
+
               Alert.alert('Off Duty', 'You are now off duty. Location tracking has stopped.');
             } catch (error) {
               console.error('Error going off duty:', error);

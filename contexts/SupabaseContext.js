@@ -12,6 +12,8 @@ export const useSupabase = () => {
 };
 
 export const SupabaseProvider = ({ children }) => {
+  // Safe mode to avoid crashes during diagnostics/Test Harness
+  const SAFE_MODE = false;
   const [buses, setBuses] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [stops, setStops] = useState([]);
@@ -25,15 +27,31 @@ export const SupabaseProvider = ({ children }) => {
 
   // Load initial data
   useEffect(() => {
-    // Load data and setup real-time subscriptions in both dev and production
-    if (__DEV__) {
-      // In development, load minimal data
-      loadMinimalData();
+    let cleanup;
+    if (SAFE_MODE) {
+      // Minimal noop load to ensure provider mounts without side effects
+      setLoading(false);
+      setConnectionStatus('connected');
     } else {
-      testConnectionAndLoadData();
+      // Load data and setup real-time subscriptions in both dev and production
+      if (__DEV__) {
+        // In development, load minimal data
+        loadMinimalData();
+      } else {
+        testConnectionAndLoadData();
+      }
+      // Always setup real-time subscriptions regardless of environment
+      try {
+        cleanup = setupRealtimeSubscriptions();
+      } catch (e) {
+        console.error('Realtime subscription setup failed:', e);
+      }
     }
-    // Always setup real-time subscriptions regardless of environment
-    setupRealtimeSubscriptions();
+    return () => {
+      if (typeof cleanup === 'function') {
+        try { cleanup(); } catch {}
+      }
+    };
   }, []);
 
   // Minimal data loading for development
@@ -197,8 +215,8 @@ export const SupabaseProvider = ({ children }) => {
 
   // Poll bus data in development for fallback real-time updates
   useEffect(() => {
+    if (SAFE_MODE) return; // disable polling in safe mode
     if (!__DEV__) return; // Only run in development
-    
     const pollInterval = setInterval(async () => {
       try {
         const busesData = await supabaseHelpers.getBuses();
@@ -206,8 +224,7 @@ export const SupabaseProvider = ({ children }) => {
       } catch (err) {
         console.warn('⚠️ Error polling buses:', err.message);
       }
-    }, 1500); // Poll every 1.5 seconds in development for smooth updates
-    
+    }, 1500);
     return () => clearInterval(pollInterval);
   }, []);
 
