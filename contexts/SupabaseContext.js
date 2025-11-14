@@ -150,30 +150,35 @@ export const SupabaseProvider = ({ children }) => {
       if (payload.event === 'UPDATE' || payload.event === 'INSERT') {
         console.log('✅ Processing bus update:', payload.new);
         
-        // Update bus location in real-time
+        // Merge all relevant fields so visibility filters react correctly
         setBuses(prevBuses => {
-          const updatedBuses = prevBuses.map(bus => {
-            if (bus.id === payload.new.id) {
-              console.log('📍 Updating bus position:', {
-                id: bus.id,
-                old: { lat: bus.latitude, lng: bus.longitude },
-                new: { lat: payload.new.latitude, lng: payload.new.longitude }
-              });
-              
-              return {
-                ...bus,
-                latitude: payload.new.latitude,
-                longitude: payload.new.longitude,
-                speed: payload.new.speed,
-                heading: payload.new.heading,
-                tracking_status: payload.new.tracking_status,
-                last_location_update: payload.new.last_location_update
-              };
-            }
-            return bus;
+          const exists = prevBuses.some(b => b.id === payload.new.id);
+          const merged = prevBuses.map(bus => {
+            if (bus.id !== payload.new.id) return bus;
+            return {
+              ...bus,
+              // location & telemetry
+              latitude: payload.new.latitude,
+              longitude: payload.new.longitude,
+              speed: payload.new.speed,
+              heading: payload.new.heading,
+              tracking_status: payload.new.tracking_status,
+              last_location_update: payload.new.last_location_update,
+              // visibility-critical fields
+              status: payload.new.status,
+              driver_id: payload.new.driver_id,
+              route_id: payload.new.route_id,
+              updated_at: payload.new.updated_at,
+            };
           });
-          return updatedBuses;
+          return exists ? merged : [...prevBuses, payload.new];
         });
+      } else if (payload.event === 'DELETE') {
+        // Remove deleted buses from local state
+        const deletedId = payload.old?.id;
+        if (deletedId) {
+          setBuses(prev => prev.filter(b => b.id !== deletedId));
+        }
       }
     });
 

@@ -1,5 +1,5 @@
 <resources>
-    <string name="google_maps_api_key">YOUR_GOOGLE_MAPS_API_KEY_HERE</string>
+    <string name="google_maps_api_key">AIzaSyAtz31ET-f9agUbnJuR-tR35Gk8GdsTRic</string>
     <string name="app_name">MetroBus Tracker</string>
     <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
     <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
